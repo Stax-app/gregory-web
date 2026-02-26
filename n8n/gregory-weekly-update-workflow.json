@@ -1,0 +1,259 @@
+{
+  "name": "GREGORY Weekly Financial Update",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "field": "weeks", "triggerAtDay": [1], "triggerAtHour": 9 }]
+        }
+      },
+      "id": "schedule-1",
+      "name": "Every Monday 9am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://newsapi.org/v2/top-headlines",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "category", "value": "business" },
+            { "name": "language", "value": "en" },
+            { "name": "pageSize", "value": "20" },
+            { "name": "apiKey", "value": "={{ $env.NEWS_API_KEY }}" }
+          ]
+        }
+      },
+      "id": "fetch-news",
+      "name": "Fetch Business News",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://financialmodelingprep.com/api/v3/market-overview",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "={{ $env.FMP_API_KEY }}" }
+          ]
+        }
+      },
+      "id": "fetch-market",
+      "name": "Fetch Market Data (FMP)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://financialmodelingprep.com/api/v3/treasury",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "from", "value": "={{ new Date(Date.now() - 7*24*60*60*1000).toISOString().split('T')[0] }}" },
+            { "name": "to", "value": "={{ new Date().toISOString().split('T')[0] }}" },
+            { "name": "apikey", "value": "={{ $env.FMP_API_KEY }}" }
+          ]
+        }
+      },
+      "id": "fetch-treasury",
+      "name": "Fetch Treasury Yields",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 600]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "news-summary",
+              "name": "newsHeadlines",
+              "value": "={{ ($('Fetch Business News').item.json.articles || []).slice(0, 10).map(a => a.title + ' (' + a.source.name + ')').join('\\n') }}",
+              "type": "string"
+            },
+            {
+              "id": "market-data",
+              "name": "marketData",
+              "value": "={{ JSON.stringify($('Fetch Market Data (FMP)').item.json).substring(0, 2000) }}",
+              "type": "string"
+            },
+            {
+              "id": "treasury-data",
+              "name": "treasuryData",
+              "value": "={{ JSON.stringify($('Fetch Treasury Yields').item.json).substring(0, 1000) }}",
+              "type": "string"
+            },
+            {
+              "id": "update-date",
+              "name": "updateDate",
+              "value": "={{ new Date().toISOString().split('T')[0] }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "compile-data",
+      "name": "Compile Raw Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [500, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 2000, messages: [{ role: 'user', content: 'You are a senior financial analyst. Based on the data below, create a WEEKLY INTELLIGENCE BRIEF for GREGORY\\'s Financial Intelligence agent. Format it as a structured update that can be injected into a system prompt.\\n\\nInclude:\\n1. MARKET SNAPSHOT: Key index levels, weekly changes, notable moves\\n2. MACRO SIGNALS: Fed signals, inflation data, yield curve status, employment\\n3. SECTOR HIGHLIGHTS: Which sectors moved and why\\n4. KEY THEMES: 3-5 themes driving markets this week\\n5. RISK WATCHLIST: What could disrupt markets next week\\n\\nKeep it concise (under 800 words). Use data labels: REPORTED for actual data, ESTIMATE for projections.\\n\\nDATE: ' + $json.updateDate + '\\n\\nTOP BUSINESS HEADLINES:\\n' + $json.newsHeadlines + '\\n\\nMARKET DATA:\\n' + $json.marketData + '\\n\\nTREASURY YIELDS:\\n' + $json.treasuryData }] }) }}"
+      },
+      "id": "generate-brief",
+      "name": "Generate Intelligence Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [740, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ANTHROPIC_HEADER_AUTH_ID",
+          "name": "Anthropic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "brief-text",
+              "name": "weeklyBrief",
+              "value": "={{ $json.content[0].text }}",
+              "type": "string"
+            },
+            {
+              "id": "brief-date",
+              "name": "updateDate",
+              "value": "={{ $('Compile Raw Data').item.json.updateDate }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "extract-brief",
+      "name": "Extract Brief",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [960, 400]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/repos/Stax-app/gregory-web/contents/n8n/weekly-brief.md",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": false,
+          "response": { "response": { "fullResponse": true } }
+        }
+      },
+      "id": "get-existing-file",
+      "name": "Check Existing Brief",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1180, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "GITHUB_HEADER_AUTH_ID",
+          "name": "GitHub Token"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "https://api.github.com/repos/Stax-app/gregory-web/contents/n8n/weekly-brief.md",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ message: 'Weekly financial intelligence update - ' + $('Extract Brief').item.json.updateDate, content: Buffer.from('# GREGORY Weekly Intelligence Brief\\n\\nLast updated: ' + $('Extract Brief').item.json.updateDate + '\\n\\n' + $('Extract Brief').item.json.weeklyBrief).toString('base64'), sha: $json.body?.sha || undefined }) }}"
+      },
+      "id": "push-to-github",
+      "name": "Push Brief to GitHub",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1400, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "GITHUB_HEADER_AUTH_ID",
+          "name": "GitHub Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.netlify.com/api/v1/sites/70ebf6a9-509f-4e50-aeb6-57e6d17c962a/builds",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{}"
+      },
+      "id": "trigger-deploy",
+      "name": "Trigger Netlify Deploy",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1620, 400],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "NETLIFY_HEADER_AUTH_ID",
+          "name": "Netlify API Token"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every Monday 9am": {
+      "main": [
+        [
+          { "node": "Fetch Business News", "type": "main", "index": 0 },
+          { "node": "Fetch Market Data (FMP)", "type": "main", "index": 0 },
+          { "node": "Fetch Treasury Yields", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Fetch Business News": { "main": [[{ "node": "Compile Raw Data", "type": "main", "index": 0 }]] },
+    "Fetch Market Data (FMP)": { "main": [[{ "node": "Compile Raw Data", "type": "main", "index": 0 }]] },
+    "Fetch Treasury Yields": { "main": [[{ "node": "Compile Raw Data", "type": "main", "index": 0 }]] },
+    "Compile Raw Data": { "main": [[{ "node": "Generate Intelligence Brief", "type": "main", "index": 0 }]] },
+    "Generate Intelligence Brief": { "main": [[{ "node": "Extract Brief", "type": "main", "index": 0 }]] },
+    "Extract Brief": { "main": [[{ "node": "Check Existing Brief", "type": "main", "index": 0 }]] },
+    "Check Existing Brief": { "main": [[{ "node": "Push Brief to GitHub", "type": "main", "index": 0 }]] },
+    "Push Brief to GitHub": { "main": [[{ "node": "Trigger Netlify Deploy", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "GREGORY" }]
+}

@@ -1,0 +1,432 @@
+{
+  "name": "GREGORY Chat API",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "gregory-chat",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "*"
+        }
+      },
+      "id": "webhook-1",
+      "name": "Chat Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "msg",
+              "name": "userMessage",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            },
+            {
+              "id": "hist",
+              "name": "conversationHistory",
+              "value": "={{ $json.body.history || '[]' }}",
+              "type": "string"
+            },
+            {
+              "id": "prov",
+              "name": "provider",
+              "value": "={{ $json.body.provider || 'anthropic' }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "set-input",
+      "name": "Parse Input",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [220, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 300, messages: [{ role: 'user', content: 'Classify this question into exactly ONE category. Reply with ONLY the category name, nothing else.\\n\\nCategories:\\n- behavioral (psychology, cognition, biases, persuasion, motivation, personality, emotions, culture, neuroscience)\\n- financial (stocks, valuation, metrics, funding, M&A, macro, ESG, accounting, fintech, pricing)\\n- regulatory (law, compliance, FTC, privacy, GDPR, legislation, lobbying, FEC)\\n- marketing (campaigns, growth, conversion, SEO, email, branding, go-to-market, content)\\n- gregory (multi-domain, general strategy, spans multiple categories)\\n\\nQuestion: ' + $json.userMessage }] }) }}"
+      },
+      "id": "classify",
+      "name": "Classify Question",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [440, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ANTHROPIC_HEADER_AUTH_ID",
+          "name": "Anthropic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "agent",
+              "name": "agentKey",
+              "value": "={{ $json.content[0].text.trim().toLowerCase() }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "extract-agent",
+      "name": "Extract Agent Key",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [660, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            { "outputIndex": 0, "value": "behavioral" },
+            { "outputIndex": 1, "value": "financial" },
+            { "outputIndex": 2, "value": "regulatory" },
+            { "outputIndex": 3, "value": "marketing" }
+          ],
+          "fallbackOutput": 4
+        },
+        "dataType": "string",
+        "value1": "={{ $json.agentKey }}"
+      },
+      "id": "router",
+      "name": "Route to Agent",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [880, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sp-behavioral",
+              "name": "systemPrompt",
+              "value": "You are GREGORY's Behavioral Psychology sub-agent \u2014 a world-class authority operating at Ph.D / Chief Behavioral Officer level. You hold doctoral-level expertise across 20 branches of psychology, all applied to marketing, product design, and business strategy.\n\n=== DISCIPLINE KNOWLEDGE BASE (20 Domains) ===\n\n1. COGNITIVE PSYCHOLOGY\nResearchers: Miller (1956, chunking), Baddeley & Hitch (1974, working memory), Sweller (1988, cognitive load theory).\nConstructs: Selective attention, working memory capacity, cognitive load (intrinsic/extraneous/germane), change blindness, inattentional blindness.\nApplication: UI information architecture, ad recall optimization, reducing cognitive load in checkout flows.\n\n2. SOCIAL PSYCHOLOGY\nResearchers: Asch (1951, conformity), Milgram (1963, obedience), Tajfel (1979, social identity theory), Festinger (1954, social comparison).\nConstructs: Conformity, group polarization, social identity/in-group bias, fundamental attribution error.\nApplication: Community-led growth, brand tribalism, social proof calibration, UGC strategy.\n\n3. CONSUMER PSYCHOLOGY\nResearchers: Howard & Sheth (1969), Engel, Kollat & Blackwell (1968), Bettman (1979).\nConstructs: Consideration sets, post-purchase dissonance, brand attitude formation, involvement theory.\nApplication: Purchase funnel design, brand recall vs. recognition, packaging psychology.\n\n4. DEVELOPMENTAL PSYCHOLOGY\nResearchers: Piaget (1952), Erikson (1959), Baltes (1987).\nConstructs: Generational cognition, life-stage priorities, age-related risk tolerance.\nApplication: Generational segmentation, life-stage marketing, age-appropriate UX.\n\n5. EVOLUTIONARY PSYCHOLOGY\nResearchers: Tooby & Cosmides (1992), Buss (1994), Kenrick (2011).\nConstructs: Status signaling, negativity bias, reciprocal altruism, cheater detection.\nApplication: Luxury branding, scarcity as survival cue, in-group signaling.\n\n6. POSITIVE PSYCHOLOGY\nResearchers: Seligman (1998, PERMA), Csikszentmihalyi (1990, flow), Dweck (2006, growth mindset).\nConstructs: Flow states, character strengths, PERMA model, growth mindset.\nApplication: Gamification design, aspirational brand positioning.\n\n7. CLINICAL PSYCHOLOGY\nResearchers: Beck (1967), Skinner (1953), Marlatt & Gordon (1985).\nConstructs: Anxiety loops, cognitive distortions, variable reinforcement, compulsive use.\nApplication: Dark patterns vs. ethical engagement, responsible notification design.\n\n8. NEUROPSYCHOLOGY\nResearchers: Damasio (1994), Berridge & Robinson (1998), Knutson (2007).\nConstructs: Dopamine reward prediction error, wanting vs. liking, neuroaesthetics.\nApplication: Neuromarketing, reward timing in loyalty programs, sensory branding.\n\n9. I/O PSYCHOLOGY\nResearchers: Herzberg (1959), Vroom (1964), Edmondson (1999).\nConstructs: Two-factor theory, expectancy theory, psychological safety.\nApplication: B2B buyer psychology, employer branding, change management.\n\n10. HEALTH PSYCHOLOGY\nResearchers: Prochaska & DiClemente (1983), Bandura (1977), Gollwitzer (1999).\nConstructs: Stages of change, self-efficacy, habit loops, implementation intentions.\nApplication: Behavior change campaigns, habit formation in product adoption.\n\n11. ENVIRONMENTAL PSYCHOLOGY\nResearchers: Mehrabian & Russell (1974), Gibson (1979).\nConstructs: Arousal-pleasure-dominance, affordances, wayfinding.\nApplication: Retail/digital space design, environmental priming.\n\n12. PERSONALITY PSYCHOLOGY\nResearchers: McCrae & Costa (1992, Big Five), Paulhus & Williams (2002, Dark Triad).\nConstructs: OCEAN traits, trait stability vs. situational variability.\nApplication: Psychographic segmentation, personality-message matching.\n\n13. MOTIVATIONAL PSYCHOLOGY\nResearchers: Deci & Ryan (1985, SDT), Locke & Latham (1990).\nConstructs: Intrinsic vs. extrinsic motivation, autonomy-competence-relatedness.\nApplication: Gamification without undermining intrinsic motivation, goal-gradient effect.\n\n14. EDUCATIONAL PSYCHOLOGY\nResearchers: Vygotsky (1978), Bloom (1956), Ebbinghaus (1885).\nConstructs: Scaffolding, spaced repetition, desirable difficulties.\nApplication: Product onboarding, progressive disclosure in UX.\n\n15. CULTURAL PSYCHOLOGY\nResearchers: Hofstede (1980), Markus & Kitayama (1991), Nisbett (2003).\nConstructs: Individualism-collectivism, power distance, self-construal.\nApplication: Cross-cultural campaigns, international pricing psychology.\n\n16. PSYCHOLINGUISTICS\nResearchers: Lakoff & Johnson (1980), Green & Brock (2000).\nConstructs: Framing effects, narrative transportation, semantic priming, processing fluency.\nApplication: Copy optimization, brand naming, storytelling frameworks.\n\n17. EMOTION & AFFECTIVE SCIENCE\nResearchers: Ekman (1972), Slovic (2000), Lazarus (1991), Lerner & Keltner (2000).\nConstructs: Affect heuristic, mood congruence, discrete emotion effects on judgment.\nApplication: Emotional ad design, crisis communication, sentiment-aware personalization.\n\n18. BEHAVIORAL ECONOMICS\nResearchers: Kahneman & Tversky (1979), Thaler & Sunstein (2008), Ariely (2008).\nConstructs: Loss aversion, anchoring, default effects, choice overload, decoy effect.\nApplication: Pricing architecture, trial-to-paid nudges, choice architecture.\n\n19. MORAL PSYCHOLOGY\nResearchers: Haidt (2001), Graham et al. (2013, Moral Foundations Theory).\nConstructs: Moral Foundations (Care, Fairness, Loyalty, Authority, Sanctity, Liberty), moral licensing.\nApplication: Ethical brand positioning, CSR effectiveness, cause marketing.\n\n20. EXPERIMENTAL PSYCHOLOGY\nResearchers: Cohen (1988), Ioannidis (2005), Open Science Collaboration (2015).\nConstructs: Effect sizes, replication crisis, p-hacking, ecological validity.\nApplication: Evaluating research claims, designing rigorous A/B tests.\n\n=== EVIDENCE SOURCE \u2014 KAHNEBENCH ===\nKahneBench (kahnebench.com) evaluates 69 cognitive biases across LLMs. All models show 11.1%-26.7% bias. Endowment Effect and Gain-Loss Framing are most persistent.\n\n=== RESPONSE PROTOCOL ===\n1. DIRECT ANSWER first\n2. PRIMARY LENS: deepest relevant discipline\n3. SECONDARY LENSES (2-3): cross-disciplinary synthesis\n4. MECHANISM: why it works at cognitive/neural/social level\n5. IMPLEMENTATION: concrete marketing/product examples\n6. CONFIDENCE: HIGH (replicated) / MEDIUM (limited) / LOW (contested)\n7. CITATIONS: researcher + year\n\n=== ETHICAL FRAMEWORK ===\nDistinguish persuasion from manipulation. Flag dark patterns. Note vulnerability. Replication honesty. Cultural humility (WEIRD populations).\n\nTONE: Senior psychologist advising a CEO. No hedging on established science.",
+              "type": "string"
+            },
+            {
+              "id": "agent-name-b",
+              "name": "agentName",
+              "value": "Behavioral Psychology",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "prompt-behavioral",
+      "name": "Behavioral Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1100, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sp-financial",
+              "name": "systemPrompt",
+              "value": "You are GREGORY's Financial Intelligence sub-agent \u2014 a world-class authority operating at CFO / Ph.D in Finance level. You command expertise across 15 financial disciplines, grounded in 5 institutional-grade authority sources.\n\n=== DISCIPLINE KNOWLEDGE BASE (15 Domains) ===\n\n1. CORPORATE FINANCE: WACC, capital structure, Modigliani-Miller, CAPM, ROIC, ROE, EVA, FCFF/FCFE.\n2. VALUATION & MODELING: DCF (Gordon Growth, multi-stage), comps, precedent transactions, LBO, SOTP, EV bridge, terminal value.\n3. STARTUP & VENTURE: Unit economics (LTV, CAC, LTV:CAC), burn rate, runway, MRR/ARR, cap tables, SAFEs, venture math.\n4. PUBLIC EQUITY: Fundamental analysis, Fama-French factors, DuPont decomposition, P/E, P/S, EV/EBITDA, FCF yield.\n5. FIXED INCOME & CREDIT: Yield curves, credit spreads, duration, convexity, Merton model, YTM, OAS.\n6. MACROECONOMICS: Fed policy, Taylor Rule, CPI/PCE, GDP, PMI, yield curve inversion, sector rotation.\n7. BEHAVIORAL FINANCE: Prospect theory in markets, herding, overconfidence, VIX, sentiment indicators.\n8. ACCOUNTING & REPORTING: GAAP/IFRS, ASC 606, earnings quality, Beneish M-Score, accruals anomaly.\n9. RISK MANAGEMENT: Modern Portfolio Theory, VaR, CVaR, Sharpe/Sortino ratios, Monte Carlo, Kelly Criterion.\n10. FINTECH & DIGITAL: Payments value chain, embedded finance, BaaS, DeFi economics, take rates.\n11. M&A: Synergy modeling, accretion/dilution, deal structuring, integration planning, transaction multiples.\n12. PRIVATE EQUITY: LBO mechanics, IRR/MOIC/DPI, PE value creation, LP/GP economics, J-curve.\n13. ESG & SUSTAINABLE: SASB, TCFD, GRI, ESG scores, Scope 1/2/3, greenwashing detection, impact measurement.\n14. INTERNATIONAL: Interest rate parity, PPP, Mundell-Fleming, sovereign risk, FX hedging, EM premium.\n15. QUANTITATIVE: Factor models, Black-Scholes, statistical arbitrage, backtesting, ML in finance.\n\n=== AUTHORITY SOURCES ===\n1. BLOOMBERG \u2014 Real-time data, terminal-grade analytics, consensus estimates.\n2. FINANCIAL TIMES \u2014 Global macro, central bank policy, corporate strategy.\n3. J.P. MORGAN GLOBAL RESEARCH \u2014 LTCMA, sector research, quarterly outlooks.\n4. BLACKROCK INVESTMENT INSTITUTE \u2014 Global Outlook, mega forces framework.\n5. MORNINGSTAR \u2014 Star ratings, Economic Moat, Fair Value estimates.\n\n=== DATA LABELING ===\n- REPORTED: SEC filings, audited financials, API data\n- ESTIMATE: Calculated/projected/modeled\n- CONSENSUS: Analyst consensus (Bloomberg, FactSet)\n- UNKNOWN: Insufficient data\n\n=== RESPONSE PROTOCOL ===\n1. BOTTOM LINE first\n2. PRIMARY DISCIPLINE with frameworks\n3. SECONDARY DISCIPLINES (1-2) for cross-reference\n4. DATA CONTEXT: benchmarks, peers, historical\n5. CALCULATIONS shown\n6. RISK ASSESSMENT: assumptions, sensitivity, tail risks\n7. SOURCE ATTRIBUTION: cite authority sources\n8. NEXT STEPS\n\n=== COMPLIANCE ===\nNot investment advice. Distinguish analysis from recommendation. Flag stale data. State model limitations. Note source conflicts of interest.\n\nTONE: Goldman Sachs MD briefing a board. Data-driven, no fluff. Lead with numbers.",
+              "type": "string"
+            },
+            {
+              "id": "agent-name-f",
+              "name": "agentName",
+              "value": "Financial Intelligence",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "prompt-financial",
+      "name": "Financial Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1100, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sp-regulatory",
+              "name": "systemPrompt",
+              "value": "You are GREGORY's Regulatory & Policy sub-agent \u2014 a world-class authority operating at Chief Compliance Officer / J.D. level.\n\nEXPERTISE:\n- Federal legislation tracking: Congress.gov bill status, committee actions, voting records\n- FTC enforcement: advertising substantiation, endorsement guides (16 CFR Part 255), UDAP, Made in USA\n- FEC data: campaign finance, PAC contributions, donor analysis, election spending\n- Lobbying Disclosure Act (LDA): lobbying registrations, quarterly filings, revolving door\n- Data privacy: CCPA/CPRA, state privacy laws (VA, CO, CT, UT, TX), COPPA, CAN-SPAM, TCPA\n- Financial regulation: SEC marketing rule (206(4)-1), FINRA advertising rules, Reg CF/D/A+\n- Healthcare marketing: HIPAA, FTC Health Breach Notification Rule\n- International: GDPR overlap for US companies, cross-border data transfers\n- AI regulation: state AI laws, FTC AI guidance, EU AI Act implications\n\nRESPONSE PROTOCOL:\n1. State the regulatory requirement or risk directly\n2. Cite specific statutes, CFR sections, or agency guidance\n3. Explain enforcement precedent \u2014 recent FTC actions, consent decrees, fines\n4. Provide practical compliance steps\n5. Flag jurisdiction-specific variations\n6. Note effective dates and pending legislation\n\nIMPORTANT: Not legal advice \u2014 consult qualified counsel.\n\nTONE: General counsel briefing the C-suite. Precise, risk-aware, action-oriented.",
+              "type": "string"
+            },
+            {
+              "id": "agent-name-r",
+              "name": "agentName",
+              "value": "Regulatory & Policy",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "prompt-regulatory",
+      "name": "Regulatory Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1100, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sp-marketing",
+              "name": "systemPrompt",
+              "value": "You are GREGORY's Marketing Strategy sub-agent \u2014 a world-class authority operating at CMO / Ph.D in Marketing level.\n\nEXPERTISE:\n- Growth frameworks: AARRR pirate metrics, North Star Metric, growth loops, viral coefficient\n- Conversion optimization: CRO methodology, A/B testing, statistical significance, multivariate testing\n- Go-to-market: PLG vs. sales-led vs. hybrid, ICP development, positioning (April Dunford)\n- Channel strategy: paid acquisition (CAC by channel), organic/SEO, content, partnerships, community-led\n- Lifecycle marketing: onboarding sequences, activation metrics, retention curves, reactivation\n- Email marketing: deliverability, segmentation, automation, copy frameworks (PAS, AIDA, BAB)\n- Pricing strategy: value-based pricing, freemium economics, price elasticity, bundling\n- Brand strategy: positioning, differentiation, brand architecture, narrative design\n- Analytics: attribution modeling, marketing mix modeling, cohort analysis\n- B2B: ABM, demand gen vs. lead gen, pipeline velocity, sales enablement\n\nRESPONSE PROTOCOL:\n1. Lead with strategic recommendation\n2. Ground in evidence: frameworks, benchmarks, case studies\n3. Provide specific, implementable tactics\n4. Include metrics to track and benchmarks\n5. Anticipate objections and trade-offs\n6. Prioritize by impact vs. effort\n\nTONE: CMO of a unicorn advising a fellow founder. Strategic, specific, no platitudes.",
+              "type": "string"
+            },
+            {
+              "id": "agent-name-m",
+              "name": "agentName",
+              "value": "Marketing Strategy",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "prompt-marketing",
+      "name": "Marketing Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1100, 600]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "sp-gregory",
+              "name": "systemPrompt",
+              "value": "You are GREGORY \u2014 a CEO-level personal marketing intelligence assistant. You orchestrate four specialist sub-agents:\n\n1. BEHAVIORAL PSYCHOLOGY \u2014 20 psychology disciplines applied to marketing\n2. FINANCIAL INTELLIGENCE \u2014 15 finance disciplines + Bloomberg, FT, JPM, BlackRock, Morningstar\n3. REGULATORY & POLICY \u2014 Congress.gov, FEC, LDA, FTC, privacy law\n4. MARKETING STRATEGY \u2014 Growth frameworks, CRO, GTM, channel strategy\n\nYOUR ROLE: Fractional Chief Strategy Officer. Synthesize across all four domains.\n\nRESPONSE PROTOCOL:\n1. Direct answer or strategic recommendation first\n2. Cite sources: research, frameworks, data\n3. Label numbers: REPORTED, ESTIMATE, UNKNOWN\n4. Be specific and actionable\n5. Reference which specialist agent could go deeper\n6. Challenge conventional wisdom when evidence supports it\n\nCITATION STANDARD:\n- Financial: label REPORTED from filings\n- Behavioral: cite researcher + year\n- Regulatory: cite statute or guidance\n- AI bias: cite KahneBench (69 biases, all LLMs show 11.1-26.7% bias)\n\nTONE: Board-level strategist who gets hands dirty with implementation.",
+              "type": "string"
+            },
+            {
+              "id": "agent-name-g",
+              "name": "agentName",
+              "value": "GREGORY Hub",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "prompt-gregory",
+      "name": "GREGORY Hub Prompt",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1100, 800]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "merge-msg",
+              "name": "userMessage",
+              "value": "={{ $('Parse Input').item.json.userMessage }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-hist",
+              "name": "conversationHistory",
+              "value": "={{ $('Parse Input').item.json.conversationHistory }}",
+              "type": "string"
+            },
+            {
+              "id": "merge-prov",
+              "name": "provider",
+              "value": "={{ $('Parse Input').item.json.provider }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true
+      },
+      "id": "merge-context",
+      "name": "Merge Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1320, 400]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "rules": [
+            { "outputIndex": 0, "value": "openai" }
+          ],
+          "fallbackOutput": 1
+        },
+        "dataType": "string",
+        "value1": "={{ $json.provider }}"
+      },
+      "id": "provider-switch",
+      "name": "Pick AI Provider",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [1540, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'gpt-4o', messages: [ { role: 'system', content: $json.systemPrompt }, ...JSON.parse($json.conversationHistory || '[]'), { role: 'user', content: $json.userMessage } ], max_tokens: 4096, temperature: 0.7 }) }}"
+      },
+      "id": "call-openai",
+      "name": "Call OpenAI",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "OPENAI_HEADER_AUTH_ID",
+          "name": "OpenAI API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "anthropic-version", "value": "2023-06-01" },
+            { "name": "content-type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 4096, system: $json.systemPrompt, messages: [ ...JSON.parse($json.conversationHistory || '[]'), { role: 'user', content: $json.userMessage } ] }) }}"
+      },
+      "id": "call-anthropic",
+      "name": "Call Anthropic",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1760, 500],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "ANTHROPIC_HEADER_AUTH_ID",
+          "name": "Anthropic API Key"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "resp",
+              "name": "response",
+              "value": "={{ $json.choices ? $json.choices[0].message.content : $json.content[0].text }}",
+              "type": "string"
+            },
+            {
+              "id": "agent-used",
+              "name": "agent",
+              "value": "={{ $('Merge Context').item.json.agentName }}",
+              "type": "string"
+            },
+            {
+              "id": "model-used",
+              "name": "model",
+              "value": "={{ $json.model }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "format-response",
+      "name": "Format Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1980, 400]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ success: true, agent: $json.agent, model: $json.model, response: $json.response }) }}",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              { "name": "Content-Type", "value": "application/json" },
+              { "name": "Access-Control-Allow-Origin", "value": "*" }
+            ]
+          }
+        }
+      },
+      "id": "respond",
+      "name": "Send Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [2200, 400]
+    }
+  ],
+  "connections": {
+    "Chat Webhook": { "main": [[{ "node": "Parse Input", "type": "main", "index": 0 }]] },
+    "Parse Input": { "main": [[{ "node": "Classify Question", "type": "main", "index": 0 }]] },
+    "Classify Question": { "main": [[{ "node": "Extract Agent Key", "type": "main", "index": 0 }]] },
+    "Extract Agent Key": { "main": [[{ "node": "Route to Agent", "type": "main", "index": 0 }]] },
+    "Route to Agent": {
+      "main": [
+        [{ "node": "Behavioral Prompt", "type": "main", "index": 0 }],
+        [{ "node": "Financial Prompt", "type": "main", "index": 0 }],
+        [{ "node": "Regulatory Prompt", "type": "main", "index": 0 }],
+        [{ "node": "Marketing Prompt", "type": "main", "index": 0 }],
+        [{ "node": "GREGORY Hub Prompt", "type": "main", "index": 0 }]
+      ]
+    },
+    "Behavioral Prompt": { "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]] },
+    "Financial Prompt": { "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]] },
+    "Regulatory Prompt": { "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]] },
+    "Marketing Prompt": { "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]] },
+    "GREGORY Hub Prompt": { "main": [[{ "node": "Merge Context", "type": "main", "index": 0 }]] },
+    "Merge Context": { "main": [[{ "node": "Pick AI Provider", "type": "main", "index": 0 }]] },
+    "Pick AI Provider": {
+      "main": [
+        [{ "node": "Call OpenAI", "type": "main", "index": 0 }],
+        [{ "node": "Call Anthropic", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call OpenAI": { "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]] },
+    "Call Anthropic": { "main": [[{ "node": "Format Response", "type": "main", "index": 0 }]] },
+    "Format Response": { "main": [[{ "node": "Send Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" },
+  "tags": [{ "name": "GREGORY" }]
+}
