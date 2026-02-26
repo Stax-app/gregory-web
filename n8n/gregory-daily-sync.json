@@ -29,7 +29,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "Bearer {{ $env.SUPABASE_SERVICE_ROLE_KEY }}"
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpdnBra2hvZnZwYWlmcHJocGlpIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0OTg4NzY0OSwiZXhwIjoyMDY1NDYzNjQ5fQ.ms6rdTl_dEggyJSpDAfv-XASMPUl1_iKgez7KIEY6Go"
             },
             {
               "name": "Content-Type",

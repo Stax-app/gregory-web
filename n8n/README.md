@@ -24,16 +24,6 @@ This n8n workflow triggers the `gregory-daily-sync` Supabase Edge Function every
 2. Go to **Workflows → Import from File**
 3. Select `gregory-daily-sync.json`
 
-### Configure Environment Variable
-
-The workflow references the Supabase service role key via an n8n environment variable. Set the following before activating:
-
-| Variable | Description |
-|---|---|
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role JWT for the GREGORY project |
-
-In n8n, go to **Settings → Environment Variables** and add `SUPABASE_SERVICE_ROLE_KEY` with your key value.
-
 ### Activate
 
 Toggle the workflow to **Active** in n8n. It will run automatically every day at 9 PM PT.
