@@ -81,7 +81,6 @@ interface ChatRequest {
   agent: string | null;
   mode?: "simple" | "agentic";
   document_ids?: string[];
-  systemPrompt?: string; // Passed from frontend for now
 }
 
 // ── Main Handler ──
@@ -109,7 +108,7 @@ serve(async (req: Request) => {
     });
   }
 
-  const { message, history, agent: agentKey, systemPrompt: clientSystemPrompt } = body;
+  const { message, history, agent: agentKey } = body;
 
   if (!message || typeof message !== "string") {
     return new Response(JSON.stringify({ error: "Message is required" }), {
@@ -118,9 +117,9 @@ serve(async (req: Request) => {
     });
   }
 
-  // Get agent config and system prompt
+  // Get agent config and system prompt (loaded from backend config, never from client)
   const agentConfig = getAgentConfig(agentKey);
-  const baseSystemPrompt = clientSystemPrompt || agentConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+  const baseSystemPrompt = agentConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
   // Augment system prompt with domain-specific tool instructions
   let systemPrompt = augmentWithToolInstructions(baseSystemPrompt, agentKey);
@@ -210,12 +209,6 @@ serve(async (req: Request) => {
         // Generate the execution plan
         const taskId = crypto.randomUUID();
         const plan = await generatePlan(message, taskId);
-
-        // Build system prompts map from the client prompt
-        const systemPrompts: Record<string, string> = {};
-        if (clientSystemPrompt) {
-          systemPrompts[agentKey || "gregory"] = clientSystemPrompt;
-        }
 
         // Persist task to DB
         const taskContext = createTaskContext(taskId, userId, plan);

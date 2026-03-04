@@ -1099,10 +1099,6 @@ async function sendMessage(text, options) {
     var targetAgent = appState.currentAgent;
     var conv = getConversation(targetAgent);
 
-    // Get the system prompt to pass to the Edge Function
-    var agentConfig = targetAgent ? AGENTS[targetAgent] : GREGORY_HUB;
-    var systemPrompt = agentConfig ? agentConfig.systemPrompt : '';
-
     appState.isStreaming = true;
     messageInput.value = '';
     messageInput.style.height = 'auto';
@@ -1131,7 +1127,6 @@ async function sendMessage(text, options) {
         message: finalMessage,
         history: conv ? conv.history.slice(-20) : [],
         agent: targetAgent,
-        systemPrompt: systemPrompt,
     };
 
     if (docIds.length > 0) {
