@@ -459,6 +459,127 @@ document.addEventListener('click', (e) => {
     }
 });
 
+// ---------- TASK HISTORY ----------
+
+function initHistoryTabs() {
+    var tabs = historyPanel.querySelectorAll('.history-tab');
+    tabs.forEach(function(tab) {
+        tab.addEventListener('click', function() {
+            tabs.forEach(function(t) { t.classList.remove('active'); });
+            tab.classList.add('active');
+
+            var target = tab.dataset.tab;
+            var convList = document.getElementById('historyList');
+            var taskList = document.getElementById('taskHistoryList');
+
+            if (target === 'tasks') {
+                convList.style.display = 'none';
+                taskList.style.display = 'block';
+                loadTaskHistory();
+            } else {
+                convList.style.display = 'block';
+                taskList.style.display = 'none';
+            }
+        });
+    });
+}
+
+async function loadTaskHistory() {
+    var taskList = document.getElementById('taskHistoryList');
+    if (!taskList) return;
+
+    if (!appState.user) {
+        taskList.innerHTML = '<div class="history-panel-empty">Sign in to view task history</div>';
+        return;
+    }
+
+    taskList.innerHTML = '<div class="history-panel-empty"><span class="tool-spinner"></span> Loading...</div>';
+
+    try {
+        var resp = await supabaseClient
+            .from('tasks')
+            .select('id, title, status, created_at, plan, accumulated_context')
+            .eq('user_id', appState.user.id)
+            .order('created_at', { ascending: false })
+            .limit(20);
+
+        if (resp.error) throw resp.error;
+        var tasks = resp.data || [];
+
+        if (tasks.length === 0) {
+            taskList.innerHTML = '<div class="history-panel-empty">No completed tasks</div>';
+            return;
+        }
+
+        var statusIcons = {
+            completed: '\u2705',
+            failed: '\u274C',
+            aborted: '\u23F9',
+            executing: '\u25B6',
+            checkpoint: '\u23F8',
+            awaiting_approval: '\u23F3',
+            planning: '\uD83D\uDCCB',
+        };
+
+        taskList.innerHTML = tasks.map(function(t) {
+            var icon = statusIcons[t.status] || '\u2753';
+            var stepCount = t.plan && t.plan.steps ? t.plan.steps.length : 0;
+            var dateStr = new Date(t.created_at).toLocaleDateString();
+            return '<div class="history-item task-history-item" data-task-id="' + t.id + '">' +
+                '<div class="history-item-icon">' + icon + '</div>' +
+                '<div class="history-item-info">' +
+                    '<div class="history-item-name">' + escapeHtml(t.title) + '</div>' +
+                    '<div class="history-item-preview">' + stepCount + ' steps \u2022 ' + t.status + ' \u2022 ' + dateStr + '</div>' +
+                '</div>' +
+            '</div>';
+        }).join('');
+
+        taskList.querySelectorAll('.task-history-item').forEach(function(el) {
+            el.addEventListener('click', function() {
+                var taskId = el.dataset.taskId;
+                var task = tasks.find(function(t) { return t.id === taskId; });
+                if (task) showTaskDetail(task);
+                historyPanel.classList.remove('visible');
+            });
+        });
+    } catch (e) {
+        console.error('Failed to load task history:', e);
+        taskList.innerHTML = '<div class="history-panel-empty">Failed to load tasks</div>';
+    }
+}
+
+function showTaskDetail(task) {
+    welcomeScreen.style.display = 'none';
+    messagesDiv.innerHTML = '';
+
+    // Render the task as a message
+    var msgEl = document.createElement('div');
+    msgEl.className = 'message message-ai';
+    msgEl.innerHTML = '<div class="message-avatar">G</div>' +
+        '<div class="message-content">' +
+            '<div class="task-detail-header">' +
+                '<h3>' + escapeHtml(task.title) + '</h3>' +
+                '<span class="task-detail-status status-' + task.status + '">' + task.status + '</span>' +
+            '</div>' +
+            (task.plan && task.plan.steps ? '<div class="task-detail-steps">' +
+                task.plan.steps.map(function(step, i) {
+                    var agentCfg = AGENTS[step.agent] || GREGORY_HUB;
+                    return '<div class="task-detail-step">' +
+                        '<span class="task-step-number">' + (i + 1) + '</span>' +
+                        '<span class="task-step-agent">' + (agentCfg.icon || 'G') + '</span>' +
+                        '<span>' + escapeHtml(step.description) + '</span>' +
+                    '</div>';
+                }).join('') +
+            '</div>' : '') +
+            (task.accumulated_context ? '<div class="message-text">' + renderMarkdown(task.accumulated_context) + '</div>' : '<div class="message-text"><p style="color: var(--text-muted);">No synthesis available for this task.</p></div>') +
+        '</div>';
+    messagesDiv.appendChild(msgEl);
+    scrollToBottom();
+}
+
+// Initialize tabs after DOM loads
+setTimeout(initHistoryTabs, 0);
+
 // ---------- CONVERSATION PERSISTENCE ----------
 
 function getConversation(agentKey) {
@@ -843,13 +964,130 @@ function scrollToBottom() {
     });
 }
 
+// ---------- TOOL EVENT UI ----------
+
+function createToolIndicator(parentEl) {
+    let container = parentEl.closest('.message-content').querySelector('.tool-activity');
+    if (!container) {
+        container = document.createElement('div');
+        container.className = 'tool-activity';
+        parentEl.closest('.message-content').insertBefore(container, parentEl);
+    }
+    return container;
+}
+
+function showToolCallUI(parentEl, data) {
+    const container = createToolIndicator(parentEl);
+    const toolNames = {
+        web_search: 'Searching the web',
+        web_scrape: 'Reading webpage',
+        financial_data: 'Fetching financial data',
+        sec_filings: 'Searching SEC filings',
+        google_trends: 'Checking Google Trends',
+        fred_economic_data: 'Fetching FRED data',
+        news_sentiment: 'Analyzing news sentiment',
+        sec_company_facts: 'Fetching SEC company data',
+        patent_search: 'Searching patents',
+        academic_search: 'Searching academic papers',
+        citation_lookup: 'Verifying citations',
+        job_market: 'Searching job market',
+        bls_data: 'Fetching BLS data',
+        world_bank_data: 'Fetching World Bank data',
+        news_search: 'Searching news',
+        analyze_document: 'Analyzing document',
+    };
+    const label = toolNames[data.tool] || `Running ${data.tool}`;
+    const detail = data.input?.query || data.input?.symbol || data.input?.url || data.input?.company || '';
+
+    const el = document.createElement('div');
+    el.className = 'tool-call-indicator';
+    el.dataset.tool = data.tool;
+    el.innerHTML = `
+        <span class="tool-spinner"></span>
+        <span class="tool-label">${escapeHtml(label)}</span>
+        ${detail ? `<span class="tool-detail">${escapeHtml(String(detail).substring(0, 60))}</span>` : ''}
+    `;
+    container.appendChild(el);
+    scrollToBottom();
+}
+
+function showToolResultUI(parentEl, data) {
+    const container = parentEl.closest('.message-content').querySelector('.tool-activity');
+    if (!container) return;
+
+    const indicator = container.querySelector(`.tool-call-indicator[data-tool="${data.tool}"]`);
+    if (indicator) {
+        const spinner = indicator.querySelector('.tool-spinner');
+        if (spinner) {
+            spinner.className = data.success ? 'tool-check' : 'tool-error';
+            spinner.textContent = data.success ? '\u2713' : '\u2717';
+        }
+        if (data.preview) {
+            const previewEl = document.createElement('span');
+            previewEl.className = 'tool-preview';
+            previewEl.textContent = data.preview.substring(0, 80);
+            indicator.appendChild(previewEl);
+        }
+    }
+}
+
+// ---------- RETRY & RESILIENCE ----------
+
+const RETRY_CONFIG = {
+    maxAttempts: 3,
+    baseDelayMs: 1000,
+    maxDelayMs: 8000,
+    streamTimeoutMs: 60000, // 60s without data = stale connection
+};
+
+function retryDelay(attempt) {
+    var delay = RETRY_CONFIG.baseDelayMs * Math.pow(2, attempt);
+    // Add jitter (±25%)
+    delay += delay * (Math.random() * 0.5 - 0.25);
+    return Math.min(delay, RETRY_CONFIG.maxDelayMs);
+}
+
+function showRetryIndicator(parentEl, attempt, maxAttempts) {
+    var existing = parentEl.closest('.message-content').querySelector('.retry-indicator');
+    if (existing) existing.remove();
+
+    var el = document.createElement('div');
+    el.className = 'retry-indicator';
+    el.innerHTML = '<span class="tool-spinner"></span> Reconnecting (attempt ' + attempt + '/' + maxAttempts + ')...';
+    parentEl.closest('.message-content').appendChild(el);
+    scrollToBottom();
+}
+
+function removeRetryIndicator(parentEl) {
+    var existing = parentEl.closest('.message-content').querySelector('.retry-indicator');
+    if (existing) existing.remove();
+}
+
+async function getAuthHeaders() {
+    var headers = { 'Content-Type': 'application/json' };
+    if (appState.user) {
+        try {
+            var session = await supabaseClient.auth.getSession();
+            if (session.data.session) {
+                headers['Authorization'] = 'Bearer ' + session.data.session.access_token;
+            }
+        } catch (_e) { /* proceed without auth */ }
+    }
+    return headers;
+}
+
 // ---------- STREAMING ----------
 
-async function sendMessage(text) {
+async function sendMessage(text, options) {
     if (!text || appState.isStreaming) return;
+    options = options || {};
 
-    const targetAgent = appState.currentAgent;
-    const conv = getConversation(targetAgent);
+    var targetAgent = appState.currentAgent;
+    var conv = getConversation(targetAgent);
+
+    // Get the system prompt to pass to the Edge Function
+    var agentConfig = targetAgent ? AGENTS[targetAgent] : GREGORY_HUB;
+    var systemPrompt = agentConfig ? agentConfig.systemPrompt : '';
 
     appState.isStreaming = true;
     messageInput.value = '';
@@ -857,78 +1095,205 @@ async function sendMessage(text) {
     sendBtn.disabled = true;
 
     addUserMessage(text);
-    const aiTextEl = createAIMessage(targetAgent);
+    var aiTextEl = createAIMessage(targetAgent);
 
-    try {
-        const response = await fetch(EDGE_FUNCTION_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message: text,
-                history: conv ? conv.history.slice(-10) : [],
-                agent: targetAgent,
-            }),
-        });
+    // Collect any attached documents
+    var attachedDocs = typeof getAndClearAttachments === 'function' ? getAndClearAttachments() : [];
+    var docIds = attachedDocs.map(function(d) { return d.id; });
 
-        if (!response.ok) {
-            const err = await response.json().catch(() => ({ error: 'Unknown error' }));
-            aiTextEl.innerHTML = `<p style="color: var(--error);">\u26A0\uFE0F ${err.error || 'Something went wrong. Please try again.'}</p>`;
-            appState.isStreaming = false;
-            sendBtn.disabled = false;
-            return;
+    // If documents are attached, prepend context to the message
+    var finalMessage = text;
+    if (attachedDocs.length > 0) {
+        var docNames = attachedDocs.map(function(d) { return d.filename; }).join(', ');
+        finalMessage = '[Attached documents: ' + docNames + ' \u2014 document IDs: ' + docIds.join(', ') + ']\n\n' + text;
+    }
+
+    var payload = {
+        message: finalMessage,
+        history: conv ? conv.history.slice(-20) : [],
+        agent: targetAgent,
+        systemPrompt: systemPrompt,
+    };
+
+    if (docIds.length > 0) {
+        payload.document_ids = docIds;
+    } else if (options.document_ids) {
+        payload.document_ids = options.document_ids;
+    }
+
+    var fullText = '';
+    var attempt = 0;
+    var success = false;
+
+    while (attempt < RETRY_CONFIG.maxAttempts && !success) {
+        attempt++;
+
+        if (attempt > 1) {
+            var delay = retryDelay(attempt - 1);
+            showRetryIndicator(aiTextEl, attempt, RETRY_CONFIG.maxAttempts);
+            await new Promise(function(r) { setTimeout(r, delay); });
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let fullText = '';
-        let buffer = '';
+        try {
+            var headers = await getAuthHeaders();
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
+            var response = await fetch(EDGE_FUNCTION_URL, {
+                method: 'POST',
+                headers: headers,
+                body: JSON.stringify(payload),
+            });
 
-            if (appState.currentAgent !== targetAgent) continue;
+            if (response.status === 429) {
+                var retryAfter = response.headers.get('Retry-After');
+                var waitMs = retryAfter ? parseInt(retryAfter) * 1000 : retryDelay(attempt);
+                showRetryIndicator(aiTextEl, attempt, RETRY_CONFIG.maxAttempts);
+                await new Promise(function(r) { setTimeout(r, waitMs); });
+                continue;
+            }
 
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() || '';
+            if (!response.ok) {
+                var err = await response.json().catch(function() { return { error: 'Unknown error' }; });
+                if (attempt >= RETRY_CONFIG.maxAttempts) {
+                    removeRetryIndicator(aiTextEl);
+                    aiTextEl.innerHTML = '<p style="color: var(--error);">\u26A0\uFE0F ' + (err.error || 'Something went wrong. Please try again.') + '</p>';
+                }
+                continue;
+            }
 
-            for (const line of lines) {
-                if (!line.startsWith('data: ')) continue;
-                const data = line.slice(6);
-                if (data === '[DONE]') continue;
+            removeRetryIndicator(aiTextEl);
 
-                try {
-                    const parsed = JSON.parse(data);
-                    const delta = parsed.choices?.[0]?.delta?.content;
-                    if (delta) {
-                        fullText += delta;
-                        aiTextEl.innerHTML = renderMarkdown(fullText);
-                        scrollToBottom();
+            var reader = response.body.getReader();
+            var decoder = new TextDecoder();
+            var buffer = '';
+            var currentEventType = null;
+            var streamTimeout;
+            var streamAborted = false;
+
+            // Set up stream timeout detection
+            function resetStreamTimeout() {
+                clearTimeout(streamTimeout);
+                streamTimeout = setTimeout(function() {
+                    streamAborted = true;
+                    try { reader.cancel(); } catch (_e) {}
+                }, RETRY_CONFIG.streamTimeoutMs);
+            }
+
+            resetStreamTimeout();
+
+            while (true) {
+                var result = await reader.read();
+                if (result.done || streamAborted) break;
+
+                resetStreamTimeout();
+
+                if (appState.currentAgent !== targetAgent) continue;
+
+                buffer += decoder.decode(result.value, { stream: true });
+                var lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (var li = 0; li < lines.length; li++) {
+                    var line = lines[li];
+
+                    // Handle named SSE events
+                    if (line.startsWith('event: ')) {
+                        currentEventType = line.slice(7).trim();
+                        continue;
                     }
-                } catch {
-                    // Skip malformed JSON chunks
+
+                    if (!line.startsWith('data: ')) continue;
+                    var data = line.slice(6);
+                    if (data === '[DONE]') continue;
+
+                    try {
+                        var parsed = JSON.parse(data);
+
+                        switch (currentEventType) {
+                            case 'tool_call':
+                                showToolCallUI(aiTextEl, parsed);
+                                break;
+
+                            case 'tool_result':
+                                showToolResultUI(aiTextEl, parsed);
+                                break;
+
+                            case 'plan':
+                                renderPlan(parsed, aiTextEl);
+                                break;
+
+                            case 'step_update':
+                                updateStepStatus(parsed);
+                                break;
+
+                            case 'checkpoint':
+                                renderCheckpoint(parsed, aiTextEl);
+                                break;
+
+                            case 'agent_handoff':
+                                showAgentHandoff(parsed, aiTextEl);
+                                break;
+
+                            case 'task_complete':
+                                showTaskComplete(parsed, aiTextEl);
+                                break;
+
+                            case 'error':
+                                if (parsed.message) {
+                                    var errorEl = document.createElement('div');
+                                    errorEl.className = 'tool-error-msg';
+                                    errorEl.textContent = parsed.message;
+                                    aiTextEl.closest('.message-content').appendChild(errorEl);
+                                }
+                                break;
+
+                            default:
+                                // Backward-compatible: OpenAI delta format
+                                var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content;
+                                if (delta) {
+                                    fullText += delta;
+                                    aiTextEl.innerHTML = renderMarkdown(fullText);
+                                    scrollToBottom();
+                                }
+                        }
+
+                        currentEventType = null;
+                    } catch (_e) {
+                        // Skip malformed JSON chunks
+                    }
                 }
             }
-        }
 
-        if (fullText) {
-            aiTextEl.innerHTML = renderMarkdown(fullText);
+            clearTimeout(streamTimeout);
 
-            if (conv) {
-                conv.history.push(
-                    { role: 'user', content: text },
-                    { role: 'assistant', content: fullText }
-                );
-                saveConversations();
+            if (streamAborted && !fullText) {
+                // Stream timed out with no data — retry
+                continue;
             }
-        } else {
-            aiTextEl.innerHTML = '<p style="color: var(--text-muted);">No response received. Please try again.</p>';
-        }
 
-    } catch (err) {
-        console.error('GREGORY chat error:', err);
-        aiTextEl.innerHTML = `<p style="color: var(--error);">\u26A0\uFE0F Connection error. Please check your network and try again.</p>`;
+            success = true;
+
+        } catch (err) {
+            console.error('GREGORY chat error (attempt ' + attempt + '):', err);
+            if (attempt >= RETRY_CONFIG.maxAttempts) {
+                removeRetryIndicator(aiTextEl);
+                aiTextEl.innerHTML = '<p style="color: var(--error);">\u26A0\uFE0F Connection error. Please check your network and try again.</p>';
+            }
+        }
+    }
+
+    if (fullText) {
+        aiTextEl.innerHTML = renderMarkdown(fullText);
+
+        if (conv) {
+            conv.history.push(
+                { role: 'user', content: text },
+                { role: 'assistant', content: fullText }
+            );
+            saveConversations();
+        }
+    } else if (success && !aiTextEl.closest('.message-content').querySelector('.tool-activity') &&
+               !aiTextEl.closest('.message-content').querySelector('.task-plan')) {
+        aiTextEl.innerHTML = '<p style="color: var(--text-muted);">No response received. Please try again.</p>';
     }
 
     appState.isStreaming = false;

@@ -76,8 +76,12 @@
             History
           </button>
           <div class="history-panel" id="historyPanel">
-            <div class="history-panel-header">Saved Conversations</div>
+            <div class="history-panel-tabs">
+              <button class="history-tab active" data-tab="conversations">Conversations</button>
+              <button class="history-tab" data-tab="tasks">Tasks</button>
+            </div>
             <div class="history-panel-list" id="historyList"></div>
+            <div class="history-panel-list" id="taskHistoryList" style="display:none;"></div>
           </div>
         </div>
       </header>
@@ -112,5 +116,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="agents.js"></script>
   <script src="app.js"></script>
+  <script src="agentic-ui.js"></script>
+  <script src="document-upload.js"></script>
 </body>
 </html>
