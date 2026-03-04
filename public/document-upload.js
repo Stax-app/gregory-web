@@ -16,6 +16,9 @@ const uploadState = {
 // ── Init Upload UI ──
 
 function initDocumentUpload() {
+    if (initDocumentUpload._done) return;
+    initDocumentUpload._done = true;
+
     const inputWrapper = document.getElementById('inputWrapper');
     if (!inputWrapper) return;
 

@@ -876,11 +876,13 @@ function renderMarkdown(text) {
 
     html = html.replace(/^---$/gm, '<hr>');
 
-    html = html.replace(/^[\s]*[-*] (.+)$/gm, '<li>$1</li>');
-    html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
-    html = html.replace(/<\/ul>\s*<ul>/g, '');
-
-    html = html.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
+    html = html.replace(/^[\s]*[-*] (.+)$/gm, '<li class="ul-item">$1</li>');
+    html = html.replace(/^\d+\. (.+)$/gm, '<li class="ol-item">$1</li>');
+    // Wrap consecutive list items in <ul> or <ol>
+    html = html.replace(/((?:<li class="ul-item">.*<\/li>\s*)+)/g, '<ul>$1</ul>');
+    html = html.replace(/((?:<li class="ol-item">.*<\/li>\s*)+)/g, '<ol>$1</ol>');
+    html = html.replace(/ class="ul-item"/g, '');
+    html = html.replace(/ class="ol-item"/g, '');
 
     html = html.replace(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)*)/g, (_, header, body) => {
         const headers = header.split('|').map(h => h.trim()).filter(Boolean);
@@ -1002,6 +1004,7 @@ function showToolCallUI(parentEl, data) {
     const el = document.createElement('div');
     el.className = 'tool-call-indicator';
     el.dataset.tool = data.tool;
+    el.dataset.callId = data.call_id || (data.tool + '_' + Date.now());
     el.innerHTML = `
         <span class="tool-spinner"></span>
         <span class="tool-label">${escapeHtml(label)}</span>
@@ -1015,7 +1018,18 @@ function showToolResultUI(parentEl, data) {
     const container = parentEl.closest('.message-content').querySelector('.tool-activity');
     if (!container) return;
 
-    const indicator = container.querySelector(`.tool-call-indicator[data-tool="${data.tool}"]`);
+    // Match by call_id if available, fall back to last unresolved indicator with matching tool name
+    let indicator;
+    if (data.call_id) {
+        indicator = container.querySelector(`.tool-call-indicator[data-call-id="${data.call_id}"]`);
+    }
+    if (!indicator) {
+        // Find the last unresolved indicator for this tool
+        const candidates = container.querySelectorAll(`.tool-call-indicator[data-tool="${data.tool}"]`);
+        for (const c of candidates) {
+            if (c.querySelector('.tool-spinner')) { indicator = c; break; }
+        }
+    }
     if (indicator) {
         const spinner = indicator.querySelector('.tool-spinner');
         if (spinner) {
@@ -1096,6 +1110,11 @@ async function sendMessage(text, options) {
 
     addUserMessage(text);
     var aiTextEl = createAIMessage(targetAgent);
+
+    // Save user message to history immediately (so it persists even on error)
+    if (conv) {
+        conv.history.push({ role: 'user', content: text });
+    }
 
     // Collect any attached documents
     var attachedDocs = typeof getAndClearAttachments === 'function' ? getAndClearAttachments() : [];
@@ -1285,10 +1304,7 @@ async function sendMessage(text, options) {
         aiTextEl.innerHTML = renderMarkdown(fullText);
 
         if (conv) {
-            conv.history.push(
-                { role: 'user', content: text },
-                { role: 'assistant', content: fullText }
-            );
+            conv.history.push({ role: 'assistant', content: fullText });
             saveConversations();
         }
     } else if (success && !aiTextEl.closest('.message-content').querySelector('.tool-activity') &&

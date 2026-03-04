@@ -51,7 +51,7 @@ export interface LLMResponse {
   usage: { input_tokens: number; output_tokens: number };
 }
 
-export type StreamCallback = (event: StreamEvent) => void;
+export type StreamCallback = (event: StreamEvent) => void | Promise<void>;
 
 export interface StreamEvent {
   type: "text_delta" | "tool_use_start" | "tool_use_delta" | "tool_use_end" | "message_end";
@@ -68,7 +68,7 @@ export interface StreamEvent {
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL_ANTHROPIC = "claude-sonnet-4-20250514";
-const DEFAULT_MODEL_OPENROUTER = "anthropic/claude-sonnet-4-20250514";
+const DEFAULT_MODEL_OPENROUTER = "openai/gpt-5.3-codex";
 const DEFAULT_MAX_TOKENS = 4096;
 
 type Provider = "anthropic" | "openrouter";
@@ -251,7 +251,7 @@ async function parseAnthropicStream(
           } else if (block.type === "tool_use") {
             currentToolBlock = { type: "tool_use", id: block.id, name: block.name, input: {} };
             toolInputJson = "";
-            onEvent({ type: "tool_use_start", tool_name: block.name, tool_id: block.id });
+            await onEvent({ type: "tool_use_start", tool_name: block.name, tool_id: block.id });
           }
           break;
         }
@@ -259,10 +259,10 @@ async function parseAnthropicStream(
           const delta = event.delta;
           if (delta.type === "text_delta" && currentTextBlock) {
             currentTextBlock.text += delta.text;
-            onEvent({ type: "text_delta", text: delta.text });
+            await onEvent({ type: "text_delta", text: delta.text });
           } else if (delta.type === "input_json_delta" && currentToolBlock) {
             toolInputJson += delta.partial_json;
-            onEvent({ type: "tool_use_delta", tool_id: currentToolBlock.id });
+            await onEvent({ type: "tool_use_delta", tool_id: currentToolBlock.id });
           }
           break;
         }
@@ -271,7 +271,7 @@ async function parseAnthropicStream(
           if (currentToolBlock) {
             try { currentToolBlock.input = toolInputJson ? JSON.parse(toolInputJson) : {}; } catch { currentToolBlock.input = {}; }
             contentBlocks.push(currentToolBlock);
-            onEvent({ type: "tool_use_end", tool_name: currentToolBlock.name, tool_id: currentToolBlock.id, tool_input: currentToolBlock.input });
+            await onEvent({ type: "tool_use_end", tool_name: currentToolBlock.name, tool_id: currentToolBlock.id, tool_input: currentToolBlock.input });
             currentToolBlock = null;
             toolInputJson = "";
           }
@@ -290,7 +290,7 @@ async function parseAnthropicStream(
     }
   }
 
-  onEvent({ type: "message_end" });
+  await onEvent({ type: "message_end" });
   return { content: contentBlocks, stop_reason: stopReason, usage };
 }
 
@@ -419,7 +419,7 @@ async function parseOpenAIStream(
 
       if (delta?.content) {
         currentText += delta.content;
-        onEvent({ type: "text_delta", text: delta.content });
+        await onEvent({ type: "text_delta", text: delta.content });
       }
 
       if (delta?.tool_calls) {
@@ -428,7 +428,7 @@ async function parseOpenAIStream(
           if (!toolCalls.has(idx)) {
             toolCalls.set(idx, { id: tc.id || "", name: tc.function?.name || "", args: "" });
             if (tc.function?.name) {
-              onEvent({ type: "tool_use_start", tool_name: tc.function.name, tool_id: tc.id });
+              await onEvent({ type: "tool_use_start", tool_name: tc.function.name, tool_id: tc.id });
             }
           }
           const existing = toolCalls.get(idx)!;
@@ -455,10 +455,10 @@ async function parseOpenAIStream(
     let input: Record<string, unknown> = {};
     try { input = tc.args ? JSON.parse(tc.args) : {}; } catch { input = {}; }
     contentBlocks.push({ type: "tool_use", id: tc.id, name: tc.name, input });
-    onEvent({ type: "tool_use_end", tool_name: tc.name, tool_id: tc.id, tool_input: input });
+    await onEvent({ type: "tool_use_end", tool_name: tc.name, tool_id: tc.id, tool_input: input });
   }
 
-  onEvent({ type: "message_end" });
+  await onEvent({ type: "message_end" });
   return {
     content: contentBlocks,
     stop_reason: openAIStopToAnthropic(finishReason, toolCalls.size > 0),

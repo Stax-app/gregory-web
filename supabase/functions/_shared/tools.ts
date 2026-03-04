@@ -579,7 +579,7 @@ const patentSearchTool: ToolDefinition = {
           description: "Max results (1-25). Default: 10",
         },
       },
-      required: [],
+      required: ["query"],
     },
   },
   async execute(input, _ctx) {
@@ -1121,10 +1121,12 @@ const analyzeDocumentTool: ToolDefinition = {
       } catch {
         extractedText = jsonText.substring(0, 15000);
       }
-    } else if (mimeType === "application/pdf") {
-      // For PDFs, we use the raw text extraction approach
-      // Supabase Edge Functions can't run native PDF parsers,
-      // so we convert to text via Jina Reader as a workaround
+    } else if (
+      mimeType === "application/pdf" ||
+      mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ) {
+      // Binary formats (PDF, XLSX, DOCX) — extract via Jina Reader
       const { data: signedUrl } = await supabase.storage
         .from("documents")
         .createSignedUrl(doc.storage_path, 300);
@@ -1140,10 +1142,10 @@ const analyzeDocumentTool: ToolDefinition = {
               extractedText = extractedText.substring(0, 15000) + "\n\n... [content truncated]";
             }
           } else {
-            extractedText = "[PDF content could not be extracted. The file was uploaded but text extraction failed.]";
+            extractedText = `[${mimeType} content could not be extracted. The file was uploaded but text extraction failed.]`;
           }
         } catch {
-          extractedText = "[PDF extraction service unavailable.]";
+          extractedText = "[Document extraction service unavailable.]";
         }
       }
     } else {

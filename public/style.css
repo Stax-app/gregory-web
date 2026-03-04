@@ -1487,6 +1487,14 @@ textarea::placeholder {
   color: var(--error);
   border-color: rgba(248, 113, 113, 0.3);
 }
+.plan-action-btn.plan-modify {
+  color: var(--warning);
+  border-color: rgba(251, 191, 36, 0.2);
+}
+.plan-action-btn.plan-modify:hover:not(:disabled) {
+  color: var(--warning);
+  border-color: rgba(251, 191, 36, 0.3);
+}
 
 /* ============ Checkpoint ============ */
 

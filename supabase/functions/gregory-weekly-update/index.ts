@@ -42,7 +42,9 @@ serve(async (req: Request) => {
   // Verify this is an authorized call (service role key or cron)
   const authHeader = req.headers.get("Authorization");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!authHeader?.includes(serviceKey || "NONE")) {
+  const expectedKey = serviceKey || "";
+  const token = authHeader?.replace("Bearer ", "");
+  if (!expectedKey || token !== expectedKey) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },

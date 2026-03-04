@@ -337,9 +337,12 @@ async function executeStep(
   const MAX_TOOL_ROUNDS = 5;
   let round = 0;
   let fullText = "";
+  let lastResponse: LLMResponse | null = null;
 
   while (round < MAX_TOOL_ROUNDS) {
     round++;
+    // Only keep the final round's text for step output
+    fullText = "";
 
     const response = await callLLMStreaming(
       {
@@ -391,11 +394,12 @@ async function executeStep(
       });
     }
 
+    lastResponse = response;
     messages.push({ role: "assistant", content: response.content });
     messages.push({ role: "user", content: toolResults });
   }
 
-  return fullText || extractText([]) || "Step completed with no text output.";
+  return fullText || extractText(lastResponse?.content ?? []) || "Step completed with no text output.";
 }
 
 // ── Final Synthesis ──

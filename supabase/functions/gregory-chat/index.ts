@@ -102,13 +102,6 @@ serve(async (req: Request) => {
 
   const { message, history, agent: agentKey, systemPrompt: clientSystemPrompt } = body;
 
-  // Rate limiting
-  const rateLimitKey = getRateLimitKey(req);
-  const rateResult = checkRateLimit(rateLimitKey, CHAT_LIMIT);
-  if (!rateResult.allowed) {
-    return rateLimitResponse(rateResult);
-  }
-
   if (!message || typeof message !== "string") {
     return new Response(JSON.stringify({ error: "Message is required" }), {
       status: 400,
@@ -165,6 +158,13 @@ serve(async (req: Request) => {
     );
     const { data: { user } } = await supabaseAuth.auth.getUser(token);
     if (user) userId = user.id;
+  }
+
+  // Rate limiting (after user ID extraction for accurate per-user limiting)
+  const rateLimitKey = getRateLimitKey(req, userId);
+  const rateResult = checkRateLimit(rateLimitKey, CHAT_LIMIT);
+  if (!rateResult.allowed) {
+    return rateLimitResponse(rateResult);
   }
 
   // Inject user memory context

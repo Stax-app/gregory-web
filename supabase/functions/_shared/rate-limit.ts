@@ -19,12 +19,15 @@ const store: Map<string, RateLimitEntry> = new Map();
 let lastCleanup = Date.now();
 const CLEANUP_INTERVAL = 60000; // 1 minute
 
-function cleanup(windowMs: number) {
+// Use the largest window for cleanup to avoid pruning long-window entries prematurely
+const MAX_WINDOW_MS = 60 * 60 * 1000; // 1 hour (matches ORCHESTRATE_LIMIT / UPLOAD_LIMIT)
+
+function cleanup() {
   const now = Date.now();
   if (now - lastCleanup < CLEANUP_INTERVAL) return;
   lastCleanup = now;
 
-  const cutoff = now - windowMs;
+  const cutoff = now - MAX_WINDOW_MS;
   for (const [key, entry] of store) {
     entry.timestamps = entry.timestamps.filter((t) => t > cutoff);
     if (entry.timestamps.length === 0) {
@@ -56,7 +59,7 @@ export function checkRateLimit(
   identifier: string,
   config: RateLimitConfig,
 ): RateLimitResult {
-  cleanup(config.windowMs);
+  cleanup();
 
   const key = `${config.prefix}:${identifier}`;
   const now = Date.now();
@@ -124,6 +127,7 @@ export function rateLimitResponse(result: RateLimitResult): Response {
         "X-RateLimit-Remaining": "0",
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Headers": "Content-Type, Authorization",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
       },
     },
   );

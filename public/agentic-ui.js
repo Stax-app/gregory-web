@@ -75,7 +75,10 @@ function renderPlan(plan, parentEl) {
     parentEl.innerHTML = '';
 
     // Wire buttons
-    planEl.querySelector('.plan-approve').addEventListener('click', () => startTask(plan.task_id));
+    planEl.querySelector('.plan-approve').addEventListener('click', (e) => {
+        e.target.disabled = true; // Prevent double-click
+        startTask(plan.task_id);
+    });
     planEl.querySelector('.plan-abort').addEventListener('click', () => {
         abortTask(plan.task_id);
         disablePlanActions(plan.task_id);
