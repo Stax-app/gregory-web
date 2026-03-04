@@ -272,8 +272,16 @@ async function abortTask(taskId) {
 }
 
 async function callOrchestrate(taskId, action, feedback) {
-    const aiTextEl = agenticState.aiTextEl;
+    let aiTextEl = agenticState.aiTextEl;
     if (!aiTextEl) return;
+
+    // After a checkpoint, create a new AI message bubble so post-checkpoint
+    // content doesn't cram into the original message with the plan + checkpoint card.
+    if (action === 'continue' || action === 'modify') {
+        const newAiTextEl = createAIMessage(appState.currentAgent);
+        agenticState.aiTextEl = newAiTextEl;
+        aiTextEl = newAiTextEl;
+    }
 
     const MAX_RETRIES = 2;
     let attempt = 0;
@@ -405,8 +413,7 @@ async function callOrchestrate(taskId, action, feedback) {
                                 const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content;
                                 if (delta) {
                                     fullText += delta;
-                                    aiTextEl.innerHTML = renderMarkdown(fullText);
-                                    scrollToBottom();
+                                    scheduleStreamRender(aiTextEl, fullText);
                                 }
                             }
                         }
@@ -435,6 +442,8 @@ async function callOrchestrate(taskId, action, feedback) {
             }
         }
     }
+
+    flushStreamRender();
 
     if (fullText) {
         aiTextEl.innerHTML = renderMarkdown(fullText);

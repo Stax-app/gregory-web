@@ -959,11 +959,45 @@ function createAIMessage(agentKey) {
     return msgEl.querySelector('.message-text');
 }
 
-function scrollToBottom() {
+function scrollToBottom(instant) {
     chatContainer.scrollTo({
         top: chatContainer.scrollHeight,
-        behavior: 'smooth'
+        behavior: instant ? 'instant' : 'smooth'
     });
+}
+
+// ── Throttled Streaming Renderer ──
+// Batches rapid text deltas and renders at most once per animation frame
+// to prevent DOM thrashing, layout flicker, and scroll jitter.
+
+var _streamRenderState = {
+    pending: false,
+    el: null,
+    text: '',
+};
+
+function scheduleStreamRender(el, fullText) {
+    _streamRenderState.el = el;
+    _streamRenderState.text = fullText;
+    if (!_streamRenderState.pending) {
+        _streamRenderState.pending = true;
+        requestAnimationFrame(function() {
+            _streamRenderState.pending = false;
+            if (_streamRenderState.el) {
+                _streamRenderState.el.innerHTML = renderMarkdown(_streamRenderState.text);
+                scrollToBottom(true);
+            }
+        });
+    }
+}
+
+function flushStreamRender() {
+    if (_streamRenderState.pending && _streamRenderState.el) {
+        _streamRenderState.pending = false;
+        _streamRenderState.el.innerHTML = renderMarkdown(_streamRenderState.text);
+    }
+    _streamRenderState.el = null;
+    _streamRenderState.text = '';
 }
 
 // ---------- TOOL EVENT UI ----------
@@ -1265,8 +1299,7 @@ async function sendMessage(text, options) {
                                 var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content;
                                 if (delta) {
                                     fullText += delta;
-                                    aiTextEl.innerHTML = renderMarkdown(fullText);
-                                    scrollToBottom();
+                                    scheduleStreamRender(aiTextEl, fullText);
                                 }
                         }
 
@@ -1294,6 +1327,8 @@ async function sendMessage(text, options) {
             }
         }
     }
+
+    flushStreamRender();
 
     if (fullText) {
         aiTextEl.innerHTML = renderMarkdown(fullText);

@@ -862,6 +862,9 @@ body {
   font-size: 0.88rem;
   line-height: 1.7;
   color: var(--text-primary);
+  min-height: 1.2em;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* AI Message Markdown Styling */
