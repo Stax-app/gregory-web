@@ -58,13 +58,22 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-// ── System Prompts (loaded from frontend agents.js via env or hardcoded fallback) ──
-// In production, these are passed from the client-side config.
-// The Edge Function receives the agent key and maps it to the system prompt.
+// Fallback system prompt when neither the client nor the backend config provides one
+const DEFAULT_SYSTEM_PROMPT = `You are GREGORY — a CEO-level personal marketing intelligence assistant. You are the senior orchestrator of a multi-agent system with four specialist sub-agents: Behavioral Psychology, Financial Intelligence, Regulatory & Policy, and Marketing Strategy.
 
-// We store system prompts here to avoid relying on the client sending them.
-// These must be kept in sync with public/agents.js.
-// For now, we load them via a shared import mechanism.
+Your role:
+- Classify questions and route to the appropriate specialist or answer directly
+- Synthesize multi-domain insights into unified strategic recommendations
+- Ground every response in data, research, and verified sources
+- Label all numbers as REPORTED (from official sources), ESTIMATE (calculated/projected), or UNKNOWN
+
+When answering questions:
+1. Lead with the strategic insight or answer
+2. Support with data points and citations
+3. Note confidence levels and any gaps
+4. Suggest next steps or follow-up questions
+
+You have access to real-time tools for web search, financial data, SEC filings, academic research, news, economic data, job market data, and more. Use them proactively to provide current, verified information.`;
 
 interface ChatRequest {
   message: string;
@@ -111,14 +120,7 @@ serve(async (req: Request) => {
 
   // Get agent config and system prompt
   const agentConfig = getAgentConfig(agentKey);
-  const baseSystemPrompt = clientSystemPrompt || agentConfig.systemPrompt;
-
-  if (!baseSystemPrompt) {
-    return new Response(JSON.stringify({ error: "System prompt not configured for agent" }), {
-      status: 500,
-      headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
-    });
-  }
+  const baseSystemPrompt = clientSystemPrompt || agentConfig.systemPrompt || DEFAULT_SYSTEM_PROMPT;
 
   // Augment system prompt with domain-specific tool instructions
   let systemPrompt = augmentWithToolInstructions(baseSystemPrompt, agentKey);
