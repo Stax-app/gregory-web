@@ -329,12 +329,14 @@ async function callOrchestrate(taskId, action, feedback) {
 
             appState.isStreaming = true;
 
+            // Orchestration steps take much longer than simple chat (multiple LLM + tool calls)
+            var orchestrateTimeoutMs = 300000; // 5 minutes
             function resetTimeout() {
                 clearTimeout(streamTimeout);
                 streamTimeout = setTimeout(function() {
                     streamAborted = true;
                     try { reader.cancel(); } catch (_e) {}
-                }, RETRY_CONFIG.streamTimeoutMs);
+                }, orchestrateTimeoutMs);
             }
 
             resetTimeout();

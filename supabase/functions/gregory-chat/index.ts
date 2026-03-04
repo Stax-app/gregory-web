@@ -212,7 +212,7 @@ serve(async (req: Request) => {
 
         // Persist task to DB
         const taskContext = createTaskContext(taskId, userId, plan);
-        await supabaseForTask.from("tasks").insert({
+        const { error: insertError } = await supabaseForTask.from("tasks").insert({
           id: taskContext.task_id,
           user_id: taskContext.user_id,
           title: plan.title,
@@ -224,6 +224,9 @@ serve(async (req: Request) => {
           created_at: taskContext.created_at,
           updated_at: taskContext.updated_at,
         });
+        if (insertError) {
+          console.error("Task insert error:", insertError.message);
+        }
 
         // Stream the plan to the frontend for approval
         await writeSSE(writer, encoder, serializePlan(plan));
