@@ -293,16 +293,7 @@ async function callOrchestrate(taskId, action, feedback) {
         try {
             const headers = await getAuthHeaders();
 
-            // Collect system prompts for all agents
-            const systemPrompts = {};
-            for (const [key, agent] of Object.entries(AGENTS)) {
-                if (agent.systemPrompt) systemPrompts[key] = agent.systemPrompt;
-            }
-            if (GREGORY_HUB.systemPrompt) {
-                systemPrompts['gregory'] = GREGORY_HUB.systemPrompt;
-            }
-
-            const payload = { task_id: taskId, action, systemPrompts };
+            const payload = { task_id: taskId, action };
             if (feedback) payload.feedback = feedback;
 
             const response = await fetch(ORCHESTRATE_URL, {
