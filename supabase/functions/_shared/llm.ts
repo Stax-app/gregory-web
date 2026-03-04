@@ -68,7 +68,7 @@ export interface StreamEvent {
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL_ANTHROPIC = "claude-sonnet-4-20250514";
-const DEFAULT_MODEL_OPENROUTER = "openai/gpt-5.3-codex";
+const DEFAULT_MODEL_OPENROUTER = "anthropic/claude-sonnet-4-20250514";
 const DEFAULT_MAX_TOKENS = 4096;
 
 type Provider = "anthropic" | "openrouter";
