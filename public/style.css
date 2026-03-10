@@ -1503,43 +1503,128 @@ textarea::placeholder {
 
 .checkpoint-card {
   background: var(--bg-glass);
-  border: 1px solid var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.25);
   border-radius: var(--radius);
   padding: 0;
-  margin-top: 12px;
+  margin-top: 16px;
   overflow: hidden;
-  backdrop-filter: blur(12px);
-  animation: fadeIn 0.4s ease;
-  box-shadow: 0 0 20px rgba(251, 191, 36, 0.06);
+  backdrop-filter: blur(16px);
+  animation: checkpointSlideIn 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 0 30px rgba(251, 191, 36, 0.08), inset 0 1px 0 rgba(251, 191, 36, 0.1);
+}
+
+@keyframes checkpointSlideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .checkpoint-card.checkpoint-resolved {
-  opacity: 0.6;
+  opacity: 0.5;
   border-color: var(--border);
   box-shadow: none;
+  transition: opacity 0.4s ease, border-color 0.4s ease;
 }
 
 .checkpoint-header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 12px 16px;
-  background: rgba(251, 191, 36, 0.06);
-  border-bottom: 1px solid rgba(251, 191, 36, 0.15);
+  gap: 10px;
+  padding: 14px 18px;
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, rgba(251, 191, 36, 0.03) 100%);
+  border-bottom: 1px solid rgba(251, 191, 36, 0.12);
   color: var(--warning);
+}
+
+.checkpoint-icon-pulse {
+  display: flex;
+  align-items: center;
+  animation: checkpointPulse 2s ease-in-out infinite;
+}
+
+@keyframes checkpointPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.checkpoint-header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
 }
 
 .checkpoint-title {
   font-weight: 600;
-  font-size: 0.82rem;
+  font-size: 0.84rem;
+  letter-spacing: 0.01em;
+}
+
+.checkpoint-subtitle {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.checkpoint-resolution-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-left: auto;
+}
+
+.checkpoint-resolution-approved {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--success);
+}
+
+.checkpoint-resolution-redirected {
+  background: rgba(99, 102, 241, 0.15);
+  color: var(--accent-light);
+}
+
+.checkpoint-resolution-aborted {
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--error);
+}
+
+.checkpoint-findings {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.checkpoint-finding {
+  background: var(--bg-secondary);
+  border-radius: var(--radius-xs);
+  padding: 10px 12px;
+}
+
+.checkpoint-finding-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+
+.checkpoint-finding-value {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  line-height: 1.4;
 }
 
 .checkpoint-summary {
-  padding: 12px 16px;
-  font-size: 0.8rem;
+  padding: 14px 18px;
+  font-size: 0.82rem;
   color: var(--text-secondary);
-  line-height: 1.6;
-  max-height: 300px;
+  line-height: 1.7;
+  max-height: 350px;
   overflow-y: auto;
 }
 
@@ -1547,25 +1632,93 @@ textarea::placeholder {
   margin-bottom: 8px;
 }
 
-.checkpoint-question {
-  padding: 8px 16px 12px;
-  font-size: 0.78rem;
+.checkpoint-summary strong {
   color: var(--text-primary);
+}
+
+.checkpoint-summary ul, .checkpoint-summary ol {
+  padding-left: 18px;
+  margin: 6px 0;
+}
+
+.checkpoint-summary li {
+  margin: 3px 0;
+}
+
+.checkpoint-question {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 18px 14px;
+  font-size: 0.8rem;
+  color: var(--accent-light);
   font-weight: 500;
+  background: rgba(99, 102, 241, 0.04);
+  border-top: 1px solid var(--border);
+}
+
+.checkpoint-question svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .checkpoint-actions {
   display: flex;
   gap: 8px;
-  padding: 12px 16px;
+  padding: 14px 18px;
   border-top: 1px solid var(--border);
+}
+
+.checkpoint-btn-continue {
+  background: rgba(52, 211, 153, 0.12) !important;
+  border-color: rgba(52, 211, 153, 0.25) !important;
+  color: var(--success) !important;
+}
+
+.checkpoint-btn-continue:hover:not(:disabled) {
+  background: rgba(52, 211, 153, 0.2) !important;
+  border-color: rgba(52, 211, 153, 0.4) !important;
+}
+
+.checkpoint-btn-modify {
+  background: rgba(99, 102, 241, 0.1) !important;
+  border-color: rgba(99, 102, 241, 0.2) !important;
+  color: var(--accent-light) !important;
+}
+
+.checkpoint-btn-modify:hover:not(:disabled) {
+  background: rgba(99, 102, 241, 0.18) !important;
+}
+
+.checkpoint-btn-abort {
+  background: transparent !important;
+  border-color: rgba(248, 113, 113, 0.2) !important;
+  color: var(--text-muted) !important;
+}
+
+.checkpoint-btn-abort:hover:not(:disabled) {
+  color: var(--error) !important;
+  border-color: rgba(248, 113, 113, 0.4) !important;
 }
 
 .checkpoint-feedback {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--border);
+  animation: fadeIn 0.3s ease;
+}
+
+.checkpoint-feedback-actions {
+  display: flex;
   gap: 8px;
-  padding: 0 16px 12px;
+}
+
+.checkpoint-btn-cancel-feedback {
+  background: transparent !important;
+  border-color: var(--border) !important;
+  color: var(--text-muted) !important;
 }
 
 .checkpoint-feedback-input {
@@ -1575,10 +1728,11 @@ textarea::placeholder {
   border-radius: var(--radius-xs);
   color: var(--text-primary);
   font-family: var(--font);
-  font-size: 0.8rem;
-  padding: 10px 12px;
+  font-size: 0.82rem;
+  padding: 12px 14px;
   resize: vertical;
-  min-height: 60px;
+  min-height: 70px;
+  line-height: 1.5;
 }
 
 .checkpoint-feedback-input:focus {
@@ -2100,3 +2254,138 @@ textarea::placeholder {
 .quality-high { background: var(--success); }
 .quality-medium { background: var(--warning); }
 .quality-low { background: var(--error); }
+
+/* ============ Data Labels (REPORTED/ESTIMATE/UNKNOWN) ============ */
+.data-label {
+  display: inline-block;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+.data-reported {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--success);
+  border: 1px solid rgba(52, 211, 153, 0.2);
+}
+
+.data-estimate {
+  background: rgba(251, 191, 36, 0.12);
+  color: var(--warning);
+  border: 1px solid rgba(251, 191, 36, 0.2);
+}
+
+.data-unknown {
+  background: rgba(139, 139, 163, 0.12);
+  color: var(--text-muted);
+  border: 1px solid rgba(139, 139, 163, 0.2);
+}
+
+.data-consensus {
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--accent-light);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+}
+
+/* ============ Source Links ============ */
+.source-link {
+  color: var(--accent-light);
+  text-decoration: none;
+  border-bottom: 1px dotted rgba(129, 140, 248, 0.4);
+  transition: all 0.2s ease;
+}
+
+.source-link:hover {
+  color: #a5b4fc;
+  border-bottom-color: var(--accent-light);
+}
+
+/* ============ Cleaner Table Wrapper ============ */
+.table-wrapper {
+  overflow-x: auto;
+  margin: 12px 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+}
+
+.table-wrapper table {
+  margin: 0;
+  border: none;
+}
+
+.table-wrapper th,
+.table-wrapper td {
+  border: none;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-wrapper tr:last-child td {
+  border-bottom: none;
+}
+
+.table-wrapper tr:hover td {
+  background: rgba(99, 102, 241, 0.03);
+}
+
+/* ============ Improved AI Response Headings ============ */
+.message-ai .message-text h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 22px 0 10px 0;
+  color: var(--text-primary);
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.message-ai .message-text h2:first-child {
+  margin-top: 4px;
+}
+
+/* ============ Critical Review Section ============ */
+.message-ai .message-text hr + h2,
+.message-ai .message-text hr + h3 {
+  color: var(--warning);
+  border-bottom-color: rgba(251, 191, 36, 0.2);
+}
+
+/* ============ Cleaner List Spacing ============ */
+.message-ai .message-text ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.message-ai .message-text ul li {
+  position: relative;
+  padding-left: 16px;
+  margin: 5px 0;
+}
+
+.message-ai .message-text ul li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 10px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  opacity: 0.5;
+}
+
+.message-ai .message-text ol {
+  padding-left: 22px;
+}
+
+.message-ai .message-text ol li {
+  margin: 5px 0;
+  padding-left: 4px;
+}
+
+.message-ai .message-text ol li::marker {
+  color: var(--accent-light);
+  font-weight: 600;
+}

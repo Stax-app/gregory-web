@@ -140,31 +140,52 @@ function updateStepStatus(data) {
 // ── Checkpoint UI ──
 
 function renderCheckpoint(data, parentEl) {
+    // Parse findings from the summary if available
+    const findings = data.findings || {};
+    const findingKeys = Object.keys(findings);
+
     const checkpointEl = document.createElement('div');
     checkpointEl.className = 'checkpoint-card';
     checkpointEl.innerHTML = `
         <div class="checkpoint-header">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg>
-            <span class="checkpoint-title">Checkpoint — Review Required</span>
+            <div class="checkpoint-icon-pulse">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="10" y1="15" x2="10" y2="9"/><line x1="14" y1="15" x2="14" y2="9"/></svg>
+            </div>
+            <div class="checkpoint-header-text">
+                <span class="checkpoint-title">Research Checkpoint</span>
+                <span class="checkpoint-subtitle">Review findings before Gregory continues</span>
+            </div>
         </div>
+        ${findingKeys.length > 0 ? `
+        <div class="checkpoint-findings">
+            ${findingKeys.map(key => `
+                <div class="checkpoint-finding">
+                    <div class="checkpoint-finding-label">${escapeHtml(key)}</div>
+                    <div class="checkpoint-finding-value">${escapeHtml(findings[key])}</div>
+                </div>
+            `).join('')}
+        </div>` : ''}
         <div class="checkpoint-summary">${renderMarkdown(data.summary)}</div>
-        ${data.question ? `<div class="checkpoint-question">${escapeHtml(data.question)}</div>` : ''}
+        ${data.question ? `<div class="checkpoint-question"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 015.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg> ${escapeHtml(data.question)}</div>` : ''}
         <div class="checkpoint-actions">
-            <button class="plan-action-btn plan-approve checkpoint-continue" data-task-id="${data.task_id}">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Continue
+            <button class="plan-action-btn checkpoint-btn-continue checkpoint-continue" data-task-id="${data.task_id}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                Looks Good — Continue
             </button>
-            <button class="plan-action-btn plan-modify checkpoint-modify" data-task-id="${data.task_id}">
+            <button class="plan-action-btn checkpoint-btn-modify checkpoint-modify" data-task-id="${data.task_id}">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                Modify Direction
+                Redirect
             </button>
-            <button class="plan-action-btn plan-abort checkpoint-abort" data-task-id="${data.task_id}">
-                Abort
+            <button class="plan-action-btn checkpoint-btn-abort checkpoint-abort" data-task-id="${data.task_id}">
+                Stop
             </button>
         </div>
         <div class="checkpoint-feedback" style="display:none;">
-            <textarea class="checkpoint-feedback-input" placeholder="Provide feedback or redirect the research..." rows="3"></textarea>
-            <button class="plan-action-btn plan-approve checkpoint-send-feedback" data-task-id="${data.task_id}">Send Feedback &amp; Continue</button>
+            <textarea class="checkpoint-feedback-input" placeholder="Tell Gregory what to change, focus on, or skip..." rows="3"></textarea>
+            <div class="checkpoint-feedback-actions">
+                <button class="plan-action-btn checkpoint-btn-continue checkpoint-send-feedback" data-task-id="${data.task_id}">Send &amp; Continue</button>
+                <button class="plan-action-btn checkpoint-btn-cancel-feedback">Cancel</button>
+            </div>
         </div>
     `;
 
@@ -172,7 +193,7 @@ function renderCheckpoint(data, parentEl) {
     messageContent.appendChild(checkpointEl);
 
     checkpointEl.querySelector('.checkpoint-continue').addEventListener('click', () => {
-        disableCheckpointActions(checkpointEl);
+        resolveCheckpoint(checkpointEl, 'approved');
         continueTask(data.task_id);
     });
 
@@ -181,29 +202,51 @@ function renderCheckpoint(data, parentEl) {
         const isHidden = feedbackArea.style.display === 'none';
         feedbackArea.style.display = isHidden ? 'flex' : 'none';
         if (isHidden) {
+            checkpointEl.querySelector('.checkpoint-actions').style.display = 'none';
             feedbackArea.querySelector('textarea').focus();
         }
     });
 
     checkpointEl.querySelector('.checkpoint-abort').addEventListener('click', () => {
-        disableCheckpointActions(checkpointEl);
+        resolveCheckpoint(checkpointEl, 'aborted');
         abortTask(data.task_id);
     });
 
     checkpointEl.querySelector('.checkpoint-send-feedback').addEventListener('click', () => {
         const feedback = checkpointEl.querySelector('.checkpoint-feedback-input').value.trim();
         if (feedback) {
-            disableCheckpointActions(checkpointEl);
+            resolveCheckpoint(checkpointEl, 'redirected');
             modifyTask(data.task_id, feedback);
         }
     });
 
+    var cancelBtn = checkpointEl.querySelector('.checkpoint-btn-cancel-feedback');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', () => {
+            checkpointEl.querySelector('.checkpoint-feedback').style.display = 'none';
+            checkpointEl.querySelector('.checkpoint-actions').style.display = 'flex';
+        });
+    }
+
     scrollToBottom();
 }
 
-function disableCheckpointActions(checkpointEl) {
+function resolveCheckpoint(checkpointEl, resolution) {
     checkpointEl.querySelectorAll('button').forEach(btn => btn.disabled = true);
     checkpointEl.classList.add('checkpoint-resolved');
+    var header = checkpointEl.querySelector('.checkpoint-header');
+    if (header) {
+        var badge = document.createElement('span');
+        badge.className = 'checkpoint-resolution-badge checkpoint-resolution-' + resolution;
+        badge.textContent = resolution === 'approved' ? 'Approved' : resolution === 'redirected' ? 'Redirected' : 'Stopped';
+        header.appendChild(badge);
+    }
+    var pulse = checkpointEl.querySelector('.checkpoint-icon-pulse');
+    if (pulse) pulse.classList.remove('checkpoint-icon-pulse');
+}
+
+function disableCheckpointActions(checkpointEl) {
+    resolveCheckpoint(checkpointEl, 'approved');
 }
 
 // ── Agent Handoff ──

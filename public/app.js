@@ -958,38 +958,53 @@ function renderMarkdown(text) {
     html = html.replace(/\[MEDIUM\]/g, '<span class="confidence-medium">MEDIUM</span>');
     html = html.replace(/\[LOW\]/g, '<span class="confidence-low">LOW</span>');
 
+    // Transform REPORTED/ESTIMATE/UNKNOWN data labels
+    html = html.replace(/\(REPORTED\)/g, '<span class="data-label data-reported">REPORTED</span>');
+    html = html.replace(/\(ESTIMATE\)/g, '<span class="data-label data-estimate">ESTIMATE</span>');
+    html = html.replace(/\(UNKNOWN\)/g, '<span class="data-label data-unknown">UNKNOWN</span>');
+    html = html.replace(/\(CONSENSUS\)/g, '<span class="data-label data-consensus">CONSENSUS</span>');
+
+    // Transform source citations: (Source: Title) or Source: URL
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" class="source-link" target="_blank" rel="noopener">$1</a>');
+
+    // Code blocks
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
         return `<pre><code class="lang-${lang}">${escapeHtml(code.trim())}</code></pre>`;
     });
-
     html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
+    // Headings
     html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
     html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
-    html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+    html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+    html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
 
+    // Text formatting
     html = html.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
     html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
     html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
 
+    // Blockquotes — merge consecutive lines
     html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+    html = html.replace(/<\/blockquote>\s*<blockquote>/g, '<br>');
 
     html = html.replace(/^---$/gm, '<hr>');
 
+    // Lists
     html = html.replace(/^[\s]*[-*] (.+)$/gm, '<li class="ul-item">$1</li>');
     html = html.replace(/^\d+\. (.+)$/gm, '<li class="ol-item">$1</li>');
-    // Wrap consecutive list items in <ul> or <ol>
     html = html.replace(/((?:<li class="ul-item">.*<\/li>\s*)+)/g, '<ul>$1</ul>');
     html = html.replace(/((?:<li class="ol-item">.*<\/li>\s*)+)/g, '<ol>$1</ol>');
     html = html.replace(/ class="ul-item"/g, '');
     html = html.replace(/ class="ol-item"/g, '');
 
+    // Tables
     html = html.replace(/\|(.+)\|\n\|[-| ]+\|\n((?:\|.+\|\n?)*)/g, (_, header, body) => {
         const headers = header.split('|').map(h => h.trim()).filter(Boolean);
         const rows = body.trim().split('\n').map(row =>
             row.split('|').map(c => c.trim()).filter(Boolean)
         );
-        let table = '<table><thead><tr>';
+        let table = '<div class="table-wrapper"><table><thead><tr>';
         headers.forEach(h => table += `<th>${h}</th>`);
         table += '</tr></thead><tbody>';
         rows.forEach(row => {
@@ -997,12 +1012,16 @@ function renderMarkdown(text) {
             row.forEach(c => table += `<td>${c}</td>`);
             table += '</tr>';
         });
-        table += '</tbody></table>';
+        table += '</tbody></table></div>';
         return table;
     });
 
-    html = html.replace(/^(?!<[huolbtph]|<\/)(.*\S.*)$/gm, '<p>$1</p>');
+    // Paragraphs — avoid wrapping block elements
+    html = html.replace(/^(?!<[huolbtpdas]|<\/)(.*\S.*)$/gm, '<p>$1</p>');
     html = html.replace(/<p>\s*<\/p>/g, '');
+
+    // Clean up excessive spacing
+    html = html.replace(/(<\/p>)\s*(<p>)/g, '$1$2');
 
     return html;
 }
