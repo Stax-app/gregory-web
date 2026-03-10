@@ -23,6 +23,7 @@ export interface PlanStep {
   tools_needed?: string[];
   depends_on?: string[];
   checkpoint?: boolean;
+  parallel_group?: string;
 }
 
 export interface Plan {
@@ -74,6 +75,22 @@ export interface ErrorEvent {
   step_id?: string;
   message: string;
   recoverable: boolean;
+}
+
+export interface ThinkingEvent {
+  content: string;
+}
+
+export interface ConfidenceEvent {
+  task_id: string;
+  overall_confidence: number;
+  claim_scores: Array<{ claim: string; confidence: "high" | "medium" | "low"; evidence: string }>;
+}
+
+export interface ReplanEvent {
+  task_id: string;
+  reason: string;
+  new_steps: string[];
 }
 
 // ── SSE Helpers ──
@@ -139,6 +156,21 @@ export function serializeTaskComplete(event: TaskCompleteEvent): string {
 /** Error notification */
 export function serializeError(event: ErrorEvent): string {
   return sseEvent("error", JSON.stringify(event));
+}
+
+/** Thinking content (for extended thinking display) */
+export function serializeThinking(event: ThinkingEvent): string {
+  return sseEvent("thinking", JSON.stringify(event));
+}
+
+/** Confidence scores */
+export function serializeConfidence(event: ConfidenceEvent): string {
+  return sseEvent("confidence", JSON.stringify(event));
+}
+
+/** Re-planning notification */
+export function serializeReplan(event: ReplanEvent): string {
+  return sseEvent("replan", JSON.stringify(event));
 }
 
 /** Stream terminator — backward-compatible */

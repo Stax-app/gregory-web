@@ -1851,3 +1851,252 @@ textarea::placeholder {
   font-size: 0.78rem;
   color: var(--text-secondary);
 }
+
+/* ============ Thinking Indicator ============ */
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  margin: 8px 0;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+}
+
+.thinking-pulse {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: thinkingPulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes thinkingPulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.thinking-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 500px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+/* ============ Confidence Badges ============ */
+.confidence-high, .confidence-medium, .confidence-low {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  vertical-align: middle;
+  margin-left: 4px;
+}
+
+.confidence-high { background: rgba(52, 211, 153, 0.15); color: var(--success); border: 1px solid rgba(52, 211, 153, 0.3); }
+.confidence-medium { background: rgba(251, 191, 36, 0.15); color: var(--warning); border: 1px solid rgba(251, 191, 36, 0.3); }
+.confidence-low { background: rgba(248, 113, 113, 0.15); color: var(--error); border: 1px solid rgba(248, 113, 113, 0.3); }
+
+/* ============ Re-plan Notification ============ */
+.replan-notification {
+  display: flex;
+  gap: 12px;
+  padding: 12px 16px;
+  margin: 10px 0;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: var(--radius-sm);
+  animation: fadeSlideIn 0.3s ease-out;
+}
+
+.replan-icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.replan-title {
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: #a78bfa;
+  margin-bottom: 2px;
+}
+
+.replan-reason {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.replan-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.replan-step {
+  padding: 2px 8px;
+  background: rgba(139, 92, 246, 0.12);
+  border-radius: 4px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+/* ============ Parallel Step Badge ============ */
+.task-step-parallel {
+  display: inline-block;
+  padding: 2px 8px;
+  background: rgba(99, 102, 241, 0.12);
+  border-radius: 4px;
+  font-size: 0.7rem;
+  color: var(--accent-light);
+  margin-left: 6px;
+}
+
+/* ============ Memory Panel ============ */
+.memory-panel {
+  position: absolute;
+  top: 56px;
+  right: 200px;
+  width: 380px;
+  max-height: 500px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+  display: none;
+  flex-direction: column;
+  z-index: 50;
+  overflow: hidden;
+}
+
+.memory-panel.visible {
+  display: flex;
+}
+
+.memory-panel-header {
+  padding: 14px 16px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.memory-panel-header h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.memory-search-input {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-family: var(--font);
+  outline: none;
+}
+
+.memory-search-input:focus {
+  border-color: var(--accent);
+}
+
+.memory-panel-list {
+  overflow-y: auto;
+  max-height: 400px;
+  padding: 8px;
+}
+
+.memory-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-xs);
+  transition: background 0.15s;
+  position: relative;
+}
+
+.memory-item:hover {
+  background: var(--bg-glass-hover);
+}
+
+.memory-item-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.memory-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.memory-item-category {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-light);
+  margin-bottom: 2px;
+}
+
+.memory-item-content {
+  font-size: 0.8rem;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.memory-item-date {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.memory-item-delete {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+
+.memory-item:hover .memory-item-delete {
+  opacity: 1;
+}
+
+.memory-item-delete:hover {
+  color: var(--error);
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ============ Quality Score Dot ============ */
+.quality-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+.quality-high { background: var(--success); }
+.quality-medium { background: var(--warning); }
+.quality-low { background: var(--error); }

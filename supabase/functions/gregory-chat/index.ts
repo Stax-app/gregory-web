@@ -28,6 +28,7 @@ import {
   serializeDone,
   serializeError,
   serializePlan,
+  serializeThinking,
   serializeToolCall,
   serializeToolResult,
   writeSSE,
@@ -43,6 +44,16 @@ import {
   extractAndSaveMemories,
   getUserMemoryContext,
 } from "../_shared/memory.ts";
+import {
+  autoExtractCompanyIntel,
+  logAnalytics,
+  extractTopicTags,
+  recordSourceQuery,
+  getResearchCache,
+  setResearchCache,
+  getCompanyIntel,
+  getDataFreshness,
+} from "../_shared/knowledge-base.ts";
 import {
   checkRateLimit,
   getRateLimitKey,
@@ -178,6 +189,20 @@ serve(async (req: Request) => {
     // Memory unavailable — proceed without it
   }
 
+  // Inject data freshness status so Gregory knows what's current
+  try {
+    const freshness = await getDataFreshness();
+    if (freshness.length > 0) {
+      const freshnessInfo = freshness
+        .map((f: { data_type: string; last_updated_at: string; status: string }) =>
+          `- ${f.data_type}: ${f.status} (updated ${new Date(f.last_updated_at).toLocaleDateString()})`)
+        .join("\n");
+      systemPrompt += `\n\n═══ DATA FRESHNESS STATUS ═══\n${freshnessInfo}\nUse knowledge_search and company_lookup tools to access this data before making live API calls.`;
+    }
+  } catch {
+    // Freshness tracking unavailable — proceed without it
+  }
+
   // ── Agentic Routing ──
   // Classify the request to determine if it needs multi-step orchestration
   const forceMode = body.mode; // Frontend can force a mode
@@ -283,6 +308,29 @@ serve(async (req: Request) => {
           .join("\n") + `\nuser: ${message}`;
         extractAndSaveMemories(userId, conversationSummary).catch(() => {});
       }
+
+      // Log conversation analytics (non-blocking)
+      const sessionId = crypto.randomUUID();
+      const topicTags = extractTopicTags(message);
+      logAnalytics({
+        user_id: userId !== "anonymous" ? userId : undefined,
+        session_id: sessionId,
+        agent_used: agentKey || "gregory",
+        topic_tags: topicTags,
+        tools_used: [],
+        message_count: history.length + 1,
+        mode: mode,
+        query_complexity: mode === "agentic" ? "complex" : "simple",
+      }).catch(() => {});
+
+      // Auto-extract company intelligence from the conversation (non-blocking)
+      if (history.length >= 2) {
+        const recentText = history
+          .slice(-4)
+          .map((m: { role: string; content: string }) => m.content)
+          .join("\n");
+        autoExtractCompanyIntel(recentText, userId !== "anonymous" ? userId : undefined).catch(() => {});
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
       console.error("Chat processing error:", errorMsg);
@@ -324,7 +372,7 @@ async function processChat(
   writer: WritableStreamDefaultWriter<Uint8Array>,
   encoder: TextEncoder,
 ): Promise<void> {
-  const MAX_TOOL_ROUNDS = 5; // Safety limit to prevent infinite tool loops
+  const MAX_TOOL_ROUNDS = 8; // Increased for deeper tool chaining
   let round = 0;
 
   while (round < MAX_TOOL_ROUNDS) {
@@ -338,15 +386,15 @@ async function processChat(
         system: systemPrompt,
         messages,
         tools: toolSchemas.length > 0 ? toolSchemas : undefined,
-        max_tokens: 4096,
+        max_tokens: 8192,
         temperature: 0.7,
       },
       async (event) => {
         if (event.type === "text_delta" && event.text) {
-          // Stream text deltas to client in OpenAI-compatible format
           await writeSSE(writer, encoder, serializeDelta(event.text));
+        } else if (event.type === "thinking_delta" && event.thinking) {
+          await writeSSE(writer, encoder, serializeThinking({ content: event.thinking }));
         }
-        // Tool events are handled after the full response is assembled
       },
     );
 

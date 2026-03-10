@@ -40,6 +40,10 @@ const agentTagDropdown = document.getElementById('agentTagDropdown');
 const historyToggle = document.getElementById('historyToggle');
 const historyPanel = document.getElementById('historyPanel');
 const historyList = document.getElementById('historyList');
+const memoryToggle = document.getElementById('memoryToggle');
+const memoryPanel = document.getElementById('memoryPanel');
+const memoryList = document.getElementById('memoryList');
+const memorySearchInput = document.getElementById('memorySearchInput');
 const authForm = document.getElementById('authForm');
 const authEmail = document.getElementById('authEmail');
 const authPassword = document.getElementById('authPassword');
@@ -453,9 +457,100 @@ function deleteConversation(key) {
 
 historyToggle.addEventListener('click', toggleHistoryPanel);
 
+// ---------- MEMORY PANEL ----------
+
+memoryToggle?.addEventListener('click', toggleMemoryPanel);
+
+function toggleMemoryPanel() {
+    memoryPanel.classList.toggle('visible');
+    if (memoryPanel.classList.contains('visible')) {
+        loadMemories();
+    }
+}
+
+async function loadMemories(searchQuery) {
+    if (!appState.user) {
+        memoryList.innerHTML = '<div class="history-panel-empty">Sign in to view memories</div>';
+        return;
+    }
+
+    memoryList.innerHTML = '<div class="history-panel-empty"><span class="tool-spinner"></span> Loading...</div>';
+
+    try {
+        let query = supabaseClient
+            .from('user_memory')
+            .select('id, category, content, created_at')
+            .eq('user_id', appState.user.id)
+            .order('created_at', { ascending: false })
+            .limit(50);
+
+        const { data: memories, error } = await query;
+        if (error) throw error;
+
+        let filtered = memories || [];
+        if (searchQuery) {
+            const terms = searchQuery.toLowerCase().split(/\s+/);
+            filtered = filtered.filter(m =>
+                terms.some(t => m.content.toLowerCase().includes(t) || m.category.toLowerCase().includes(t))
+            );
+        }
+
+        if (filtered.length === 0) {
+            memoryList.innerHTML = '<div class="history-panel-empty">No memories found</div>';
+            return;
+        }
+
+        const categoryIcons = {
+            company_info: '\uD83C\uDFE2',
+            preferences: '\u2699\uFE0F',
+            prior_findings: '\uD83D\uDD0D',
+            contacts: '\uD83D\uDC64',
+            entity_relationship: '\uD83D\uDD17',
+            analysis_outcome: '\uD83D\uDCCA',
+            data_point: '\uD83D\uDCCD',
+        };
+
+        memoryList.innerHTML = filtered.map(m => {
+            const icon = categoryIcons[m.category] || '\uD83D\uDCA1';
+            const dateStr = new Date(m.created_at).toLocaleDateString();
+            return '<div class="memory-item" data-id="' + m.id + '">' +
+                '<div class="memory-item-icon">' + icon + '</div>' +
+                '<div class="memory-item-info">' +
+                    '<div class="memory-item-category">' + escapeHtml(m.category.replace(/_/g, ' ')) + '</div>' +
+                    '<div class="memory-item-content">' + escapeHtml(m.content) + '</div>' +
+                    '<div class="memory-item-date">' + dateStr + '</div>' +
+                '</div>' +
+                '<button class="memory-item-delete" data-id="' + m.id + '" title="Delete memory">' +
+                    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
+                '</button>' +
+            '</div>';
+        }).join('');
+
+        memoryList.querySelectorAll('.memory-item-delete').forEach(btn => {
+            btn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                const memId = btn.dataset.id;
+                await supabaseClient.from('user_memory').delete().eq('id', memId).eq('user_id', appState.user.id);
+                loadMemories(memorySearchInput.value.trim());
+            });
+        });
+    } catch (e) {
+        console.error('Failed to load memories:', e);
+        memoryList.innerHTML = '<div class="history-panel-empty">Failed to load memories</div>';
+    }
+}
+
+memorySearchInput?.addEventListener('input', () => {
+    const query = memorySearchInput.value.trim();
+    loadMemories(query || null);
+});
+
 document.addEventListener('click', (e) => {
     if (!e.target.closest('#historyPanel') && !e.target.closest('#historyToggle')) {
         historyPanel.classList.remove('visible');
+    }
+    if (!e.target.closest('#memoryPanel') && !e.target.closest('#memoryToggle')) {
+        memoryPanel.classList.remove('visible');
     }
 });
 
@@ -858,6 +953,11 @@ function handleSend() {
 function renderMarkdown(text) {
     let html = text;
 
+    // Transform confidence markers into styled badges
+    html = html.replace(/\[HIGH\]/g, '<span class="confidence-high">HIGH</span>');
+    html = html.replace(/\[MEDIUM\]/g, '<span class="confidence-medium">MEDIUM</span>');
+    html = html.replace(/\[LOW\]/g, '<span class="confidence-low">LOW</span>');
+
     html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (_, lang, code) => {
         return `<pre><code class="lang-${lang}">${escapeHtml(code.trim())}</code></pre>`;
     });
@@ -1031,6 +1131,12 @@ function showToolCallUI(parentEl, data) {
         world_bank_data: 'Fetching World Bank data',
         news_search: 'Searching news',
         analyze_document: 'Analyzing document',
+        calculate: 'Calculating',
+        decompose_query: 'Decomposing query',
+        company_lookup: 'Checking knowledge base',
+        knowledge_search: 'Searching knowledge base',
+        metric_trend: 'Analyzing trends',
+        sheets_data: 'Querying data sources',
     };
     const label = toolNames[data.tool] || `Running ${data.tool}`;
     const detail = data.input?.query || data.input?.symbol || data.input?.url || data.input?.company || '';
@@ -1294,10 +1400,22 @@ async function sendMessage(text, options) {
                                 }
                                 break;
 
+                            case 'thinking':
+                                showThinkingIndicator(aiTextEl, parsed);
+                                break;
+
+                            case 'replan':
+                                showReplanNotification(aiTextEl, parsed);
+                                break;
+
+                            case 'confidence':
+                                // Confidence data embedded in text, no separate UI needed
+                                break;
+
                             default:
-                                // Backward-compatible: OpenAI delta format
                                 var delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content;
                                 if (delta) {
+                                    removeThinkingIndicator(aiTextEl);
                                     fullText += delta;
                                     scheduleStreamRender(aiTextEl, fullText);
                                 }
@@ -1344,6 +1462,43 @@ async function sendMessage(text, options) {
 
     appState.isStreaming = false;
     sendBtn.disabled = !messageInput.value.trim();
+    scrollToBottom();
+}
+
+// ---------- THINKING & REPLAN UI ----------
+
+function showThinkingIndicator(parentEl, data) {
+    let indicator = parentEl.closest('.message-content').querySelector('.thinking-indicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.className = 'thinking-indicator';
+        indicator.innerHTML = '<div class="thinking-pulse"></div><span class="thinking-label">Reasoning deeply...</span>';
+        parentEl.closest('.message-content').insertBefore(indicator, parentEl);
+    }
+    // Update with latest thinking snippet (truncated)
+    const label = indicator.querySelector('.thinking-label');
+    if (data.content && data.content.length > 0) {
+        const snippet = data.content.length > 80 ? '...' + data.content.slice(-80) : data.content;
+        label.textContent = 'Thinking: ' + snippet;
+    }
+    scrollToBottom();
+}
+
+function removeThinkingIndicator(parentEl) {
+    const indicator = parentEl.closest('.message-content')?.querySelector('.thinking-indicator');
+    if (indicator) indicator.remove();
+}
+
+function showReplanNotification(parentEl, data) {
+    const el = document.createElement('div');
+    el.className = 'replan-notification';
+    el.innerHTML = '<div class="replan-icon">\uD83D\uDD04</div>' +
+        '<div class="replan-info">' +
+            '<div class="replan-title">Plan Adapted</div>' +
+            '<div class="replan-reason">' + escapeHtml(data.reason || 'Adjusting research direction based on findings') + '</div>' +
+            (data.new_steps ? '<div class="replan-steps">' + data.new_steps.map(function(s) { return '<span class="replan-step">' + escapeHtml(s) + '</span>'; }).join('') + '</div>' : '') +
+        '</div>';
+    parentEl.closest('.message-content').appendChild(el);
     scrollToBottom();
 }
 

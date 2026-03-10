@@ -6,6 +6,44 @@
 
 import type { ToolSchema } from "./llm.ts";
 
+// ── Response Cache ──
+// Simple in-memory cache for identical tool calls within the same function invocation.
+// Reduces duplicate API calls and saves cost/latency.
+
+const _toolCache = new Map<string, { result: ToolResult; timestamp: number }>();
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+function getCacheKey(toolName: string, input: Record<string, unknown>): string {
+  return `${toolName}:${JSON.stringify(input)}`;
+}
+
+function getCachedResult(toolName: string, input: Record<string, unknown>): ToolResult | null {
+  const key = getCacheKey(toolName, input);
+  const cached = _toolCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    // Return cached result with cached flag
+    const result = { ...cached.result };
+    if (result.metadata) result.metadata = { ...result.metadata, cached: true };
+    return result;
+  }
+  if (cached) _toolCache.delete(key); // Expired
+  return null;
+}
+
+function setCachedResult(toolName: string, input: Record<string, unknown>, result: ToolResult): void {
+  // Only cache successful results from external APIs (not local tools)
+  if (!result.success) return;
+  const nonCacheable = new Set(["analyze_document", "decompose_query"]);
+  if (nonCacheable.has(toolName)) return;
+  const key = getCacheKey(toolName, input);
+  _toolCache.set(key, { result, timestamp: Date.now() });
+  // Evict old entries if cache grows too large
+  if (_toolCache.size > 100) {
+    const oldest = _toolCache.keys().next().value;
+    if (oldest) _toolCache.delete(oldest);
+  }
+}
+
 // ── Types ──
 
 export interface ToolContext {
@@ -21,6 +59,7 @@ export interface ToolResult {
     source: string;
     cached: boolean;
     cost_indicator: "free" | "paid";
+    quality_score?: number;
   };
 }
 
@@ -1176,6 +1215,557 @@ const analyzeDocumentTool: ToolDefinition = {
   timeout_ms: 30000,
 };
 
+// ── Additional Financial Tools ──
+
+/** FMP Earnings Call Transcripts */
+const earningsTranscriptTool: ToolDefinition = {
+  schema: {
+    name: "earnings_transcript",
+    description:
+      "Fetch earnings call transcripts for public companies. Reveals management commentary on strategy, outlook, competitive positioning, and guidance. Essential for understanding company direction beyond the numbers.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Stock ticker (e.g. AAPL, MSFT)" },
+        year: { type: "number", description: "Year of the earnings call. Default: current year" },
+        quarter: { type: "number", enum: [1, 2, 3, 4], description: "Quarter (1-4). Default: most recent" },
+      },
+      required: ["symbol"],
+    },
+  },
+  async execute(input, _ctx) {
+    const apiKey = Deno.env.get("FMP_API_KEY");
+    if (!apiKey) return { success: false, data: null, error: "FMP_API_KEY not configured" };
+
+    const symbol = input.symbol as string;
+    const year = (input.year as number) || new Date().getFullYear();
+    const quarter = (input.quarter as number) || Math.ceil((new Date().getMonth() + 1) / 3);
+
+    const url = `https://financialmodelingprep.com/api/v3/earning_call_transcript/${symbol}?year=${year}&quarter=${quarter}&apikey=${apiKey}`;
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return { success: false, data: null, error: `FMP transcript error: ${resp.status}` };
+      const data = await resp.json();
+      // Truncate long transcripts
+      if (Array.isArray(data) && data.length > 0 && data[0].content) {
+        data[0].content = data[0].content.substring(0, 12000);
+      }
+      return {
+        success: true,
+        data,
+        metadata: { source: "financial_modeling_prep", cached: false, cost_indicator: "paid" },
+      };
+    } catch (e) {
+      return { success: false, data: null, error: `Transcript failed: ${(e as Error).message}` };
+    }
+  },
+  timeout_ms: 15000,
+};
+
+/** FMP Company News */
+const companyNewsTool: ToolDefinition = {
+  schema: {
+    name: "company_news",
+    description:
+      "Fetch recent news articles for a specific company. Returns headlines, summaries, sentiment, and source URLs. Use for tracking competitor moves, M&A rumors, product launches, and executive changes.",
+    input_schema: {
+      type: "object",
+      properties: {
+        symbol: { type: "string", description: "Stock ticker (e.g. AAPL, TSLA)" },
+        limit: { type: "number", description: "Number of articles (1-50). Default: 15" },
+      },
+      required: ["symbol"],
+    },
+  },
+  async execute(input, _ctx) {
+    const apiKey = Deno.env.get("FMP_API_KEY");
+    if (!apiKey) return { success: false, data: null, error: "FMP_API_KEY not configured" };
+
+    const symbol = input.symbol as string;
+    const limit = (input.limit as number) || 15;
+
+    const url = `https://financialmodelingprep.com/api/v3/stock_news?tickers=${symbol}&limit=${limit}&apikey=${apiKey}`;
+
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) return { success: false, data: null, error: `FMP news error: ${resp.status}` };
+      const data = await resp.json();
+      return {
+        success: true,
+        data: {
+          symbol,
+          articles: (data || []).map((a: Record<string, unknown>) => ({
+            title: a.title,
+            text: (a.text as string)?.substring(0, 300),
+            url: a.url,
+            source: a.site,
+            published: a.publishedDate,
+            sentiment: a.sentiment,
+          })),
+        },
+        metadata: { source: "financial_modeling_prep", cached: false, cost_indicator: "paid" },
+      };
+    } catch (e) {
+      return { success: false, data: null, error: `Company news failed: ${(e as Error).message}` };
+    }
+  },
+  timeout_ms: 10000,
+};
+
+// ── Analysis & Planning Tools ──
+
+/** Calculator / Data Analysis — evaluates mathematical expressions */
+const calculatorTool: ToolDefinition = {
+  schema: {
+    name: "calculate",
+    description:
+      "Evaluate mathematical expressions, financial calculations, statistical analysis. Handles: DCF models, growth rates, CAGR, ratios, percentage changes, NPV, IRR estimates, weighted averages, and basic statistics. Returns precise numerical results.",
+    input_schema: {
+      type: "object",
+      properties: {
+        expression: {
+          type: "string",
+          description: "Mathematical expression to evaluate. Supports: +, -, *, /, **, %, Math functions (sqrt, log, pow, abs, round, floor, ceil, min, max). Examples: '(1500000 / 500000) * 100', 'Math.pow(1.15, 5)', '((125-100)/100)*100'",
+        },
+        description: {
+          type: "string",
+          description: "What this calculation represents (e.g. '5-year CAGR for AAPL revenue')",
+        },
+        variables: {
+          type: "object",
+          description: "Named variables to use in the expression. E.g. {revenue_2024: 394000000000, revenue_2020: 274000000000}",
+        },
+      },
+      required: ["expression"],
+    },
+  },
+  async execute(input, _ctx) {
+    const expression = input.expression as string;
+    const description = input.description as string | undefined;
+    const variables = input.variables as Record<string, number> | undefined;
+
+    try {
+      let evalExpr = expression;
+      if (variables) {
+        for (const [key, value] of Object.entries(variables)) {
+          evalExpr = evalExpr.replace(new RegExp(`\\b${key}\\b`, "g"), String(value));
+        }
+      }
+
+      const result = new Function("Math", `"use strict"; return (${evalExpr})`)(Math);
+
+      if (typeof result !== "number" || !isFinite(result)) {
+        return { success: false, data: null, error: `Expression evaluated to non-finite number: ${result}` };
+      }
+
+      return {
+        success: true,
+        data: {
+          expression,
+          result,
+          formatted: result.toLocaleString("en-US", { maximumFractionDigits: 6 }),
+          description: description || null,
+        },
+        metadata: { source: "calculator", cached: false, cost_indicator: "free" },
+      };
+    } catch (e) {
+      return { success: false, data: null, error: `Calculation error: ${(e as Error).message}` };
+    }
+  },
+  timeout_ms: 5000,
+};
+
+/** Query Decomposition — generates optimized search queries from a natural language question */
+const queryDecomposeTool: ToolDefinition = {
+  schema: {
+    name: "decompose_query",
+    description:
+      "Break a complex research question into multiple optimized search queries. Use BEFORE web_search or academic_search when the user's question is broad or multi-faceted. Returns 3-5 focused, keyword-rich queries that together cover the full question.",
+    input_schema: {
+      type: "object",
+      properties: {
+        question: {
+          type: "string",
+          description: "The complex question to decompose into search queries",
+        },
+        target_tools: {
+          type: "array",
+          items: { type: "string", enum: ["web_search", "academic_search", "news_sentiment", "financial_data", "sec_filings"] },
+          description: "Which tools these queries will be used with (affects query optimization)",
+        },
+      },
+      required: ["question"],
+    },
+  },
+  async execute(input, _ctx) {
+    const { callLLM, extractText } = await import("./llm.ts");
+    const question = input.question as string;
+    const targetTools = (input.target_tools as string[]) || ["web_search"];
+
+    const response = await callLLM({
+      system: `You decompose complex research questions into 3-5 focused search queries optimized for the specified tools. Return ONLY a JSON array of query strings. Each query should:
+- Be specific and keyword-rich (not natural language questions)
+- Cover a different facet of the original question
+- Be optimized for the target search tool (e.g., web_search queries should include recent date markers like "2025" or "2026", academic_search should use technical terms)
+Example: For "What is Nike's competitive position in the athletic wear market?"
+["Nike market share athletic footwear 2025 2026", "Nike vs Adidas vs New Balance revenue comparison", "Nike DTC strategy direct-to-consumer growth", "athletic wear industry trends 2025 consumer preferences", "Nike brand perception Gen Z millennials 2025"]`,
+      messages: [{ role: "user", content: `Question: ${question}\nTarget tools: ${targetTools.join(", ")}` }],
+      max_tokens: 500,
+      temperature: 0.3,
+    });
+
+    const text = extractText(response.content);
+    try {
+      const queries = JSON.parse(text.trim());
+      return {
+        success: true,
+        data: { original_question: question, optimized_queries: queries, target_tools: targetTools },
+        metadata: { source: "query_decomposition", cached: false, cost_indicator: "free" },
+      };
+    } catch {
+      const queries = text.split("\n").filter((l: string) => l.trim()).map((l: string) => l.replace(/^[\d\-.*"]+\s*/, "").replace(/"$/, ""));
+      return {
+        success: true,
+        data: { original_question: question, optimized_queries: queries.slice(0, 5), target_tools: targetTools },
+        metadata: { source: "query_decomposition", cached: false, cost_indicator: "free" },
+      };
+    }
+  },
+  timeout_ms: 15000,
+};
+
+/**
+ * Score source quality based on source type, recency, and authority.
+ * Returns a 0-1 score where 1 = highest quality.
+ */
+export function scoreSourceQuality(source: string, _data: unknown): number {
+  const authorityScores: Record<string, number> = {
+    sec_edgar: 0.95, sec_edgar_xbrl: 0.95,
+    fred: 0.9, bls: 0.9, world_bank: 0.85,
+    financial_modeling_prep: 0.8,
+    semantic_scholar: 0.85, crossref: 0.85,
+    tavily: 0.6, jina_reader: 0.5,
+    gdelt: 0.7, newsdata: 0.6,
+    adzuna: 0.7, serpapi_trends: 0.7,
+    uspto_patentsview: 0.9,
+    calculator: 1.0,
+    document_upload: 0.5,
+    query_decomposition: 0.8,
+  };
+  return authorityScores[source] || 0.5;
+}
+
+// ── Knowledge Base Tools ──
+
+/** Company Knowledge Base Lookup */
+const companyLookupTool: ToolDefinition = {
+  schema: {
+    name: "company_lookup",
+    description:
+      "Look up a company in Gregory's persistent knowledge base. Returns stored intelligence including financials, competitors, SWOT analysis, and recent news. Much faster than re-researching — use this FIRST before web search or financial_data for any company query.",
+    input_schema: {
+      type: "object",
+      properties: {
+        identifier: {
+          type: "string",
+          description: "Company name or stock ticker (e.g. 'Nike' or 'NKE')",
+        },
+        search_industry: {
+          type: "string",
+          description: "Optionally search all companies in an industry (e.g. 'saas', 'fintech')",
+        },
+      },
+      required: ["identifier"],
+    },
+  },
+  async execute(input, _ctx) {
+    const { getCompanyIntel, searchCompanies, getCompaniesByIndustry } = await import("./knowledge-base.ts");
+
+    const identifier = input.identifier as string;
+    const searchIndustry = input.search_industry as string | undefined;
+
+    if (searchIndustry) {
+      const companies = await getCompaniesByIndustry(searchIndustry);
+      return {
+        success: true,
+        data: { companies, count: companies.length },
+        metadata: { source: "knowledge_base", cached: false, cost_indicator: "free" as const },
+      };
+    }
+
+    const company = await getCompanyIntel(identifier);
+    if (company) {
+      return {
+        success: true,
+        data: company,
+        metadata: { source: "knowledge_base", cached: false, cost_indicator: "free" as const },
+      };
+    }
+
+    // Try fuzzy search
+    const results = await searchCompanies(identifier, 5);
+    if (results.length > 0) {
+      return {
+        success: true,
+        data: { exact_match: false, suggestions: results },
+        metadata: { source: "knowledge_base", cached: false, cost_indicator: "free" as const },
+      };
+    }
+
+    return {
+      success: true,
+      data: { found: false, message: `No data on '${identifier}' yet. Use financial_data or web_search to research, and Gregory will remember for next time.` },
+      metadata: { source: "knowledge_base", cached: false, cost_indicator: "free" as const },
+    };
+  },
+  timeout_ms: 5000,
+};
+
+/** Metric Trend Analysis */
+const metricTrendTool: ToolDefinition = {
+  schema: {
+    name: "metric_trend",
+    description:
+      "Get historical trend data for key metrics tracked by Gregory (S&P 500, consumer sentiment, CPI, unemployment, ad spend, etc.). Returns time-series data for trend analysis without needing an API call.",
+    input_schema: {
+      type: "object",
+      properties: {
+        metric_name: {
+          type: "string",
+          description: "Name of the metric (e.g. 'sp500', 'consumer_sentiment', 'cpi', 'unemployment_rate', 'digital_ad_spend')",
+        },
+        days: {
+          type: "number",
+          description: "Number of days of history to retrieve. Default: 30",
+        },
+        category: {
+          type: "string",
+          enum: ["market", "economic", "advertising", "consumer", "employment"],
+          description: "Get latest values for all metrics in this category",
+        },
+      },
+      required: [],
+    },
+  },
+  async execute(input, _ctx) {
+    const { getMetricTrend, getLatestMetrics } = await import("./knowledge-base.ts");
+
+    const metricName = input.metric_name as string | undefined;
+    const days = (input.days as number) || 30;
+    const category = input.category as string | undefined;
+
+    if (category) {
+      const metrics = await getLatestMetrics(category);
+      return {
+        success: true,
+        data: { category, metrics, count: metrics.length },
+        metadata: { source: "metric_snapshots", cached: false, cost_indicator: "free" as const },
+      };
+    }
+
+    if (metricName) {
+      const trend = await getMetricTrend(metricName, days);
+      if (trend.length === 0) {
+        return {
+          success: true,
+          data: { metric: metricName, found: false, message: "No trend data recorded yet for this metric." },
+          metadata: { source: "metric_snapshots", cached: false, cost_indicator: "free" as const },
+        };
+      }
+
+      // Calculate basic stats
+      const values = trend.map((t) => t.value);
+      const latest = values[values.length - 1];
+      const oldest = values[0];
+      const change = latest - oldest;
+      const changePercent = oldest !== 0 ? ((change / oldest) * 100).toFixed(2) : "N/A";
+
+      return {
+        success: true,
+        data: {
+          metric: metricName,
+          trend,
+          summary: {
+            latest,
+            oldest,
+            change,
+            change_percent: changePercent,
+            min: Math.min(...values),
+            max: Math.max(...values),
+            data_points: trend.length,
+          },
+        },
+        metadata: { source: "metric_snapshots", cached: false, cost_indicator: "free" as const },
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: "Provide either metric_name or category",
+    };
+  },
+  timeout_ms: 5000,
+};
+
+/** Knowledge Base Search (cross-table) */
+const knowledgeSearchTool: ToolDefinition = {
+  schema: {
+    name: "knowledge_search",
+    description:
+      "Search Gregory's entire knowledge base across companies, industry briefs, research cache, and metric data. Use this for broad queries when you're not sure which specific source to check.",
+    input_schema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "What to search for (company, industry, topic, metric)",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  async execute(input, _ctx) {
+    const { searchCompanies, getLatestMetrics } = await import("./knowledge-base.ts");
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+
+    const query = input.query as string;
+    const lower = query.toLowerCase();
+    const results: Record<string, unknown> = {};
+
+    const sb = createClient(
+      Deno.env.get("SUPABASE_URL") || "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+    );
+
+    // Search companies
+    const companies = await searchCompanies(query, 5);
+    if (companies.length > 0) {
+      results.companies = companies.map((c) => ({
+        name: c.company_name,
+        ticker: c.ticker,
+        industry: c.industry,
+        summary: c.summary,
+      }));
+    }
+
+    // Search industry briefs
+    const { data: industries } = await sb
+      .from("industry_briefs")
+      .select("industry, title, content, data_date")
+      .or(`industry.ilike.%${lower}%,title.ilike.%${lower}%`)
+      .order("data_date", { ascending: false })
+      .limit(3);
+    if (industries && industries.length > 0) {
+      results.industry_briefs = industries;
+    }
+
+    // Search intelligence cache
+    const { data: intel } = await sb
+      .from("intelligence_cache")
+      .select("category, title, content, data_date")
+      .ilike("content", `%${lower}%`)
+      .order("data_date", { ascending: false })
+      .limit(3);
+    if (intel && intel.length > 0) {
+      results.intelligence_briefs = intel.map((i: { title: string; data_date: string; content: string }) => ({
+        title: i.title,
+        date: i.data_date,
+        preview: i.content.substring(0, 300),
+      }));
+    }
+
+    // Search research cache
+    const { data: research } = await sb
+      .from("research_cache")
+      .select("tool_name, input_summary, quality_score, created_at")
+      .ilike("input_summary", `%${lower}%`)
+      .gt("expires_at", new Date().toISOString())
+      .order("access_count", { ascending: false })
+      .limit(5);
+    if (research && research.length > 0) {
+      results.cached_research = research;
+    }
+
+    const totalResults = Object.values(results).reduce(
+      (sum, arr) => sum + (Array.isArray(arr) ? arr.length : 0),
+      0,
+    );
+
+    return {
+      success: true,
+      data: { query, results, total_results: totalResults },
+      metadata: { source: "knowledge_base", cached: false, cost_indicator: "free" as const },
+    };
+  },
+  timeout_ms: 10000,
+};
+
+/** Google Sheets Data Tool */
+const sheetsDataTool: ToolDefinition = {
+  schema: {
+    name: "sheets_data",
+    description:
+      "Query data from Google Sheets that have been connected to Gregory as data sources. Use for custom datasets, competitor trackers, industry benchmarks, and any user-curated data.",
+    input_schema: {
+      type: "object",
+      properties: {
+        category: {
+          type: "string",
+          enum: ["market_data", "competitor_intel", "industry_benchmarks", "custom"],
+          description: "Category of sheet data to query",
+        },
+        sheet_id: {
+          type: "string",
+          description: "Specific Google Sheet ID to fetch fresh data from (bypasses sync)",
+        },
+      },
+      required: [],
+    },
+  },
+  async execute(input, _ctx) {
+    const sheetId = input.sheet_id as string | undefined;
+    const category = input.category as string | undefined;
+
+    if (sheetId) {
+      // Direct fetch from a specific sheet
+      const { fetchGoogleSheet } = await import("./knowledge-base.ts");
+      try {
+        const rows = await fetchGoogleSheet(sheetId);
+        return {
+          success: true,
+          data: { rows: rows.slice(0, 100), total_rows: rows.length, truncated: rows.length > 100 },
+          metadata: { source: "google_sheets", cached: false, cost_indicator: "free" as const },
+        };
+      } catch (e) {
+        return {
+          success: false,
+          data: null,
+          error: `Failed to fetch sheet: ${(e as Error).message}. Make sure the sheet is published to web (File > Share > Publish to web).`,
+        };
+      }
+    }
+
+    if (category) {
+      const { querySheetData } = await import("./knowledge-base.ts");
+      const data = await querySheetData(category);
+      return {
+        success: true,
+        data: { category, rows: data, count: data.length },
+        metadata: { source: "google_sheets", cached: false, cost_indicator: "free" as const },
+      };
+    }
+
+    return {
+      success: false,
+      data: null,
+      error: "Provide either a category or a sheet_id to query",
+    };
+  },
+  timeout_ms: 15000,
+};
+
 // ── Registry ──
 
 /** All available tools */
@@ -1200,6 +1790,17 @@ export const TOOL_REGISTRY: Record<string, ToolDefinition> = {
   bls_data: blsTool,
   world_bank_data: worldBankTool,
   news_search: newsDataTool,
+  // Additional financial
+  earnings_transcript: earningsTranscriptTool,
+  company_news: companyNewsTool,
+  // Analysis & planning
+  calculate: calculatorTool,
+  decompose_query: queryDecomposeTool,
+  // Knowledge base tools
+  company_lookup: companyLookupTool,
+  metric_trend: metricTrendTool,
+  knowledge_search: knowledgeSearchTool,
+  sheets_data: sheetsDataTool,
 };
 
 /**
@@ -1229,6 +1830,33 @@ export async function executeTool(
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), tool.timeout_ms);
 
+  // Check in-memory cache first
+  const cachedResult = getCachedResult(toolName, input);
+  if (cachedResult) return cachedResult;
+
+  // Check persistent research cache (database-backed, longer TTL)
+  try {
+    const { getResearchCache } = await import("./knowledge-base.ts");
+    const persistentCache = await getResearchCache(toolName, input);
+    if (persistentCache) {
+      const result: ToolResult = {
+        success: true,
+        data: persistentCache.data,
+        metadata: {
+          source: "research_cache",
+          cached: true,
+          cost_indicator: "free",
+          quality_score: persistentCache.quality_score,
+        },
+      };
+      return result;
+    }
+  } catch {
+    // Persistent cache unavailable — continue with live call
+  }
+
+  const startMs = Date.now();
+
   try {
     const result = await Promise.race([
       tool.execute(input, ctx),
@@ -1238,8 +1866,32 @@ export async function executeTool(
         );
       }),
     ]);
+
+    const elapsedMs = Date.now() - startMs;
+
+    // Add source quality score
+    if (result.success && result.metadata) {
+      result.metadata.quality_score = scoreSourceQuality(result.metadata.source, result.data);
+    }
+
+    // Cache the result (in-memory)
+    setCachedResult(toolName, input, result);
+
+    // Persist to research cache (database, non-blocking)
+    if (result.success && result.metadata?.source !== "knowledge_base" && result.metadata?.source !== "research_cache") {
+      import("./knowledge-base.ts").then(({ setResearchCache, recordSourceQuery }) => {
+        setResearchCache(toolName, input, result.data, result.metadata?.quality_score || 0.5).catch(() => {});
+        recordSourceQuery(result.metadata?.source || toolName, true, elapsedMs).catch(() => {});
+      }).catch(() => {});
+    }
+
     return result;
   } catch (e) {
+    // Record source failure (non-blocking)
+    import("./knowledge-base.ts").then(({ recordSourceQuery }) => {
+      recordSourceQuery(toolName, false, Date.now() - startMs).catch(() => {});
+    }).catch(() => {});
+
     return {
       success: false,
       data: null,

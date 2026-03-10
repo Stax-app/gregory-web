@@ -47,6 +47,10 @@ WHEN TO USE TOOLS:
 - User asks about the replication status of a finding → academic_search for recent meta-analyses
 - User references a specific paper → citation_lookup to get exact citation count and verify
 
+ANALYSIS & PLANNING:
+- calculate: Evaluate mathematical expressions, financial calculations, growth rates, statistical analysis. USE THIS instead of estimating numbers — always compute precisely.
+- decompose_query: Break complex questions into optimized search queries. USE THIS before web_search or academic_search when the question is broad or multi-faceted.
+
 WHEN NOT TO USE TOOLS:
 - Explaining established theory (prospect theory, Big Five, etc.) from your training data
 - Discussing frameworks and models you already know deeply
@@ -62,6 +66,8 @@ FINANCIAL DATA:
 - financial_data: Stock quotes, company profiles, income statements, balance sheets, cash flow, ratios, sector performance, treasury yields from Financial Modeling Prep. All data labeled REPORTED.
 - sec_company_facts: Structured XBRL data from SEC EDGAR — exact revenue, net income, EPS, assets, and 100s of other reported financial facts. USE THIS for precise financial figures.
 - sec_filings: Full-text search across 20+ years of SEC filings. USE THIS to find competitor strategy language in 10-K management discussion sections.
+- earnings_transcript: Fetch earnings call transcripts. USE THIS to understand management strategy, competitive commentary, and forward guidance beyond the numbers.
+- company_news: Fetch recent company-specific news. USE THIS for tracking competitor moves, M&A rumors, product launches, and executive changes.
 
 ECONOMIC DATA:
 - fred_economic_data: 840K+ Federal Reserve time series — CPI (CPIAUCSL), fed funds rate (FEDFUNDS), unemployment (UNRATE), GDP, consumer sentiment (UMCSENT), retail sales (RSXFS), 10-year treasury (DGS10), PCE.
@@ -84,6 +90,10 @@ WHEN TO USE TOOLS:
 - International expansion analysis → world_bank_data
 - Competitor intelligence → sec_filings + patent_search
 - Current events affecting markets → news_sentiment
+
+ANALYSIS & PLANNING:
+- calculate: Evaluate mathematical expressions, financial calculations, growth rates, statistical analysis. USE THIS instead of estimating numbers — always compute precisely.
+- decompose_query: Break complex questions into optimized search queries. USE THIS before web_search or academic_search when the question is broad or multi-faceted.
 
 WHEN NOT TO USE TOOLS:
 - Explaining valuation methodology (DCF, comps, LBO) from your training
@@ -119,6 +129,10 @@ WHEN TO USE TOOLS:
 - Questions about pending legislation → web_scrape congress.gov pages
 - Questions about privacy law landscape → web_search for state-by-state updates
 - Questions about AI regulation → web_search for EU AI Act, state AI laws
+
+ANALYSIS & PLANNING:
+- calculate: Evaluate mathematical expressions, financial calculations, growth rates, statistical analysis. USE THIS instead of estimating numbers — always compute precisely.
+- decompose_query: Break complex questions into optimized search queries. USE THIS before web_search or academic_search when the question is broad or multi-faceted.
 
 WHEN NOT TO USE TOOLS:
 - Explaining established regulatory frameworks (GDPR structure, CAN-SPAM requirements)
@@ -156,6 +170,10 @@ WHEN TO USE TOOLS:
 - Pricing strategy → financial_data for competitor comps + fred_economic_data for macro context
 - International expansion → world_bank_data + web_search for market conditions
 - Brand strategy or positioning → web_search for competitor positioning and market trends
+
+ANALYSIS & PLANNING:
+- calculate: Evaluate mathematical expressions, financial calculations, growth rates, statistical analysis. USE THIS instead of estimating numbers — always compute precisely.
+- decompose_query: Break complex questions into optimized search queries. USE THIS before web_search or academic_search when the question is broad or multi-faceted.
 
 WHEN NOT TO USE TOOLS:
 - Only skip web_search for pure framework explanations (e.g., "What is the AARRR framework?") where no current data would add value`;
@@ -197,6 +215,22 @@ WHEN TO USE TOOLS:
 - Cite the tool source with every data point: "(FRED: UMCSENT)" or "(SEC 10-K filing)" or "(Semantic Scholar: 2,341 citations)"
 - When using web_search or web_scrape, ALWAYS include the source URL(s) in your response. Format as: "Source: [Title](URL)" or list them at the end under a "Sources:" heading
 
+ANALYSIS & PLANNING:
+- calculate: Evaluate mathematical expressions, financial calculations, growth rates, statistical analysis. USE THIS instead of estimating numbers — always compute precisely.
+- decompose_query: Break complex questions into optimized search queries. USE THIS before web_search or academic_search when the question is broad or multi-faceted.
+
+KNOWLEDGE BASE (Gregory's persistent memory):
+- company_lookup: Check Gregory's knowledge base FIRST before researching any company. Instant recall of previously researched companies — financials, competitors, SWOT, news. Saves time and API calls.
+- knowledge_search: Search across ALL of Gregory's stored intelligence — companies, industry briefs, cached research, metrics. Use for broad queries when unsure which specific source to check.
+- metric_trend: Get historical trend data for tracked metrics (S&P 500, CPI, consumer sentiment, unemployment, etc.). Returns time-series with change calculations. Use to ground analysis in trend context.
+- sheets_data: Query user-connected Google Sheets data sources. Use for custom datasets, competitor trackers, industry benchmarks, or any curated data the user has connected.
+
+TOOL PRIORITY ORDER:
+1. company_lookup / knowledge_search FIRST (instant, free, already-researched data)
+2. metric_trend for trend context (instant, free)
+3. Live API tools (web_search, financial_data, etc.) only when knowledge base doesn't have what you need
+4. After using live tools, Gregory automatically saves findings to the knowledge base for next time
+
 WHEN NOT TO USE TOOLS:
 - Only skip tools for simple definitions or pure framework explanations where current data adds no value`;
 
@@ -213,6 +247,8 @@ export const AGENT_CONFIGS: Record<string, AgentConfig> = {
       "news_sentiment",
       "fred_economic_data",
       "analyze_document",
+      "calculate", "decompose_query",
+      "company_lookup", "knowledge_search", "metric_trend", "sheets_data",
     ],
     toolInstructions: BEHAVIORAL_TOOL_INSTRUCTIONS,
     systemPrompt: `You are GREGORY's Behavioral Psychology sub-agent — a world-class authority operating at Ph.D / Chief Behavioral Officer level. You hold doctoral-level expertise across 20 branches of psychology, all applied to marketing, product design, and business strategy.
@@ -365,12 +401,14 @@ Authoritative but accessible. You are a senior psychologist advising a CEO — d
     shortName: "Financial",
     tools: [
       "web_search", "web_scrape",
-      "financial_data", "sec_filings", "sec_company_facts",
+      "financial_data", "sec_filings", "sec_company_facts", "earnings_transcript", "company_news",
       "fred_economic_data", "world_bank_data",
       "news_sentiment",
       "patent_search",
       "academic_search", "citation_lookup",
       "analyze_document",
+      "calculate", "decompose_query",
+      "company_lookup", "knowledge_search", "metric_trend", "sheets_data",
     ],
     toolInstructions: FINANCIAL_TOOL_INSTRUCTIONS,
     systemPrompt: `You are GREGORY's Financial Intelligence sub-agent — a world-class authority operating at CFO / Ph.D in Finance level. You command doctoral-level expertise across 15 financial disciplines, grounded in the methodologies and frameworks of the world's top 5 financial intelligence sources.
@@ -514,6 +552,8 @@ Goldman Sachs managing director briefing a board of directors. Precise, data-dri
       "patent_search",
       "academic_search",
       "analyze_document",
+      "calculate", "decompose_query",
+      "company_lookup", "knowledge_search", "metric_trend", "sheets_data",
     ],
     toolInstructions: REGULATORY_TOOL_INSTRUCTIONS,
     systemPrompt: `You are GREGORY's Regulatory & Policy sub-agent — a world-class authority operating at Chief Compliance Officer / J.D. level.
@@ -547,12 +587,14 @@ TONE: Think general counsel briefing the C-suite before a product launch. Precis
     shortName: "Marketing",
     tools: [
       "web_search", "web_scrape",
-      "financial_data", "sec_filings", "sec_company_facts",
+      "financial_data", "sec_filings", "sec_company_facts", "earnings_transcript", "company_news",
       "fred_economic_data", "world_bank_data",
       "news_sentiment",
       "patent_search",
       "academic_search", "citation_lookup",
       "analyze_document",
+      "calculate", "decompose_query",
+      "company_lookup", "knowledge_search", "metric_trend", "sheets_data",
     ],
     toolInstructions: MARKETING_TOOL_INSTRUCTIONS,
     systemPrompt: `You are GREGORY's Marketing Strategy sub-agent — a world-class authority operating at CMO / Ph.D in Marketing level.
@@ -587,12 +629,14 @@ export const HUB_CONFIG: AgentConfig = {
   shortName: "GREGORY",
   tools: [
     "web_search", "web_scrape",
-    "financial_data", "sec_filings", "sec_company_facts",
+    "financial_data", "sec_filings", "sec_company_facts", "earnings_transcript", "company_news",
     "fred_economic_data", "world_bank_data",
     "news_sentiment",
     "patent_search",
     "academic_search", "citation_lookup",
     "analyze_document",
+    "calculate", "decompose_query",
+    "company_lookup", "knowledge_search", "metric_trend", "sheets_data",
   ],
   toolInstructions: HUB_TOOL_INSTRUCTIONS,
   systemPrompt: `You are GREGORY — a CEO-level personal marketing intelligence assistant. You are the senior orchestrator of a multi-agent system with four specialist sub-agents:

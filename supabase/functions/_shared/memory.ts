@@ -42,7 +42,7 @@ const EXTRACT_MEMORY_TOOL: ToolSchema = {
           properties: {
             category: {
               type: "string",
-              enum: ["company_info", "preferences", "prior_findings", "contacts"],
+              enum: ["company_info", "preferences", "prior_findings", "contacts", "entity_relationship", "analysis_outcome", "data_point"],
               description: "Category of this memory",
             },
             content: {
@@ -58,6 +58,22 @@ const EXTRACT_MEMORY_TOOL: ToolSchema = {
     required: ["memories"],
   },
 };
+
+/**
+ * Simple semantic similarity check using word overlap.
+ * Returns true if the new content is too similar to an existing memory.
+ */
+function isSimilar(existing: string, candidate: string, threshold = 0.7): boolean {
+  const a = existing.toLowerCase().trim();
+  const b = candidate.toLowerCase().trim();
+  if (a === b) return true;
+  if (a.includes(b) || b.includes(a)) return true;
+  const wordsA = new Set(a.split(/\s+/));
+  const wordsB = new Set(b.split(/\s+/));
+  const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+  const union = new Set([...wordsA, ...wordsB]).size;
+  return (intersection / union) >= threshold;
+}
 
 /**
  * Extract memorable facts from a conversation and store them.
@@ -83,6 +99,9 @@ EXTRACT facts like:
 - The user's company name, industry, role, team size
 - Their preferred communication style or formatting
 - Key decisions or conclusions from research tasks
+- Relationships between entities (e.g. "Company X is a competitor of Company Y in the SaaS space")
+- Specific data points discovered (e.g. "Nike's DTC revenue was $21.3B in FY2024")
+- Outcomes of analyses (e.g. "Our analysis showed AAPL is undervalued by 15% on DCF basis")
 - Names of colleagues, clients, or stakeholders they mention
 - Specific preferences ("always include competitor analysis", "focus on B2B SaaS")
 
@@ -114,12 +133,10 @@ Be very selective — only save facts you're confident about. 2-5 facts per conv
     .select("content")
     .eq("user_id", userId);
 
-  const existingContents = new Set(
-    (existing || []).map((m: { content: string }) => m.content.toLowerCase().trim()),
-  );
+  const existingContents = (existing || []).map((m: { content: string }) => m.content);
 
   const newMemories = extracted.memories.filter(
-    (m) => !existingContents.has(m.content.toLowerCase().trim()),
+    (m) => !existingContents.some(ex => isSimilar(ex, m.content)),
   );
 
   if (newMemories.length === 0) return 0;
@@ -160,7 +177,7 @@ export async function getUserMemoryContext(userId: string): Promise<string> {
     .select("category, content, created_at")
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(30); // Cap at 30 memories to avoid token bloat
+    .limit(100); // Increased capacity for knowledge graph
 
   if (error || !memories || memories.length === 0) return "";
 
@@ -176,6 +193,9 @@ export async function getUserMemoryContext(userId: string): Promise<string> {
     preferences: "User Preferences",
     prior_findings: "Key Findings from Prior Sessions",
     contacts: "People & Stakeholders",
+    entity_relationship: "Known Entities & Relationships",
+    analysis_outcome: "Outcomes from Prior Analyses",
+    data_point: "Key Data Points Collected",
   };
 
   let context = "\n\n══ USER MEMORY (persistent across sessions) ══\n\n";
@@ -210,4 +230,44 @@ export async function deleteMemory(
     .eq("user_id", userId);
 
   return !error;
+}
+
+/**
+ * Search user memories by keyword relevance (RAG-style retrieval).
+ */
+export async function searchMemories(
+  userId: string,
+  query: string,
+  limit = 10,
+): Promise<MemoryEntry[]> {
+  if (!userId || userId === "anonymous") return [];
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") || "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "",
+  );
+
+  const { data: memories, error } = await supabase
+    .from("user_memory")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(200);
+
+  if (error || !memories) return [];
+
+  const queryWords = new Set(query.toLowerCase().split(/\s+/).filter((w: string) => w.length > 2));
+
+  const scored = memories.map((m: MemoryEntry) => {
+    const contentWords = m.content.toLowerCase().split(/\s+/);
+    const matchCount = contentWords.filter((w: string) => queryWords.has(w)).length;
+    const score = matchCount / Math.max(queryWords.size, 1);
+    return { memory: m, score };
+  });
+
+  return scored
+    .filter((s: { score: number }) => s.score > 0)
+    .sort((a: { score: number }, b: { score: number }) => b.score - a.score)
+    .slice(0, limit)
+    .map((s: { memory: MemoryEntry }) => s.memory);
 }

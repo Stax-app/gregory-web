@@ -119,6 +119,10 @@ const CREATE_PLAN_TOOL: ToolSchema = {
               type: "boolean",
               description: "Set to true if the user should review findings before proceeding past this step. Use checkpoints after research phases and before strategy/synthesis phases.",
             },
+            parallel_group: {
+              type: "string",
+              description: "If set, steps with the same parallel_group can execute simultaneously. E.g. 'research-phase'. Steps without this run sequentially.",
+            },
           },
           required: ["id", "description", "agent"],
         },
@@ -147,7 +151,9 @@ PLANNING GUIDELINES:
   - regulatory: compliance, legal, privacy, advertising regulations
   - marketing: campaigns, positioning, GTM, growth, conversion optimization
   - gregory: synthesis across domains, general strategy, final deliverable creation
-- Steps run sequentially. Use depends_on to be explicit about dependencies.
+- Steps run sequentially by default. Use depends_on to be explicit about dependencies.
+- Use parallel_group to mark independent steps that can run simultaneously. E.g. if behavioral analysis and financial analysis are independent, give them the same parallel_group.
+- ALWAYS include a critique step before the final synthesis: assign it to "gregory" agent with description like "Challenge findings, identify gaps, and rate confidence per claim". This should depend on all research steps.
 - Include at least one checkpoint — typically after the research/analysis phase, before the synthesis/strategy phase.
 - Be specific in step descriptions. "Research X" is too vague. "Analyze top 5 competitors' pricing, CAC, and revenue multiples using financial data and SEC filings" is good.
 - The final step should almost always be a gregory (hub) synthesis step that combines all findings.
@@ -255,4 +261,87 @@ export async function summarizeContext(
   });
 
   return extractText(response.content) || rawContext.substring(0, maxLength);
+}
+
+/**
+ * Evaluate whether the plan should be modified based on step results.
+ * Returns null if no changes needed, or a modified plan if re-planning is warranted.
+ */
+export async function evaluateReplan(
+  originalPlan: Plan,
+  completedStepIds: string[],
+  stepResults: Record<string, StepResult>,
+  _accumulatedContext: string,
+): Promise<{ shouldReplan: boolean; reason?: string; newSteps?: PlanStep[] }> {
+  const completedSummaries = completedStepIds.map(id => {
+    const result = stepResults[id];
+    const step = originalPlan.steps.find(s => s.id === id);
+    return `Step "${step?.description}" (${result?.agent}): ${result?.output?.substring(0, 300)}`;
+  }).join("\n");
+
+  const remainingSteps = originalPlan.steps
+    .filter(s => !completedStepIds.includes(s.id))
+    .map(s => `${s.id}: ${s.description} (${s.agent})`)
+    .join("\n");
+
+  const response = await callLLM({
+    system: `You evaluate whether a research plan needs adjustment based on findings so far. Use the evaluate_plan tool.
+
+Consider re-planning when:
+- A step revealed unexpected information that changes the direction
+- A step failed and an alternative approach is needed
+- The remaining steps are no longer relevant given what was found
+- New research angles have emerged that should be explored
+
+Do NOT re-plan when:
+- Everything is going as expected
+- Minor details differ but the overall direction is sound`,
+    messages: [{
+      role: "user",
+      content: `ORIGINAL PLAN: ${originalPlan.title}\n\nCOMPLETED STEPS:\n${completedSummaries}\n\nREMAINING STEPS:\n${remainingSteps}`,
+    }],
+    tools: [{
+      name: "evaluate_plan",
+      description: "Evaluate if the plan needs changes",
+      input_schema: {
+        type: "object",
+        properties: {
+          should_replan: { type: "boolean", description: "Whether the plan should be modified" },
+          reason: { type: "string", description: "Why or why not to re-plan" },
+          new_steps: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                description: { type: "string" },
+                agent: { type: "string", enum: ["behavioral", "financial", "regulatory", "marketing", "gregory"] },
+                tools_needed: { type: "array", items: { type: "string" } },
+                depends_on: { type: "array", items: { type: "string" } },
+                checkpoint: { type: "boolean" },
+                parallel_group: { type: "string" },
+              },
+              required: ["id", "description", "agent"],
+            },
+            description: "Replacement steps for the remaining plan (only if should_replan is true)",
+          },
+        },
+        required: ["should_replan", "reason"],
+      },
+    }],
+    max_tokens: 1500,
+    temperature: 0.2,
+  });
+
+  const toolCalls = extractToolCalls(response.content);
+  if (toolCalls.length > 0) {
+    const input = toolCalls[0].input as { should_replan: boolean; reason: string; new_steps?: PlanStep[] };
+    return {
+      shouldReplan: input.should_replan,
+      reason: input.reason,
+      newSteps: input.new_steps,
+    };
+  }
+
+  return { shouldReplan: false };
 }

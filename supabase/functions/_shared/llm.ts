@@ -29,7 +29,12 @@ export interface ToolResultBlock {
   content: string;
 }
 
-export type ContentBlock = TextBlock | ToolUseBlock;
+export interface ThinkingBlock {
+  type: "thinking";
+  thinking: string;
+}
+
+export type ContentBlock = TextBlock | ToolUseBlock | ThinkingBlock;
 
 export interface Message {
   role: "user" | "assistant";
@@ -43,6 +48,9 @@ export interface LLMRequest {
   max_tokens?: number;
   temperature?: number;
   model?: string;
+  useOpus?: boolean;
+  thinking?: boolean;
+  thinkingBudget?: number;
 }
 
 export interface LLMResponse {
@@ -54,8 +62,9 @@ export interface LLMResponse {
 export type StreamCallback = (event: StreamEvent) => void | Promise<void>;
 
 export interface StreamEvent {
-  type: "text_delta" | "tool_use_start" | "tool_use_delta" | "tool_use_end" | "message_end";
+  type: "text_delta" | "tool_use_start" | "tool_use_delta" | "tool_use_end" | "message_end" | "thinking_delta";
   text?: string;
+  thinking?: string;
   tool_name?: string;
   tool_id?: string;
   tool_input?: Record<string, unknown>;
@@ -68,7 +77,9 @@ export interface StreamEvent {
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const DEFAULT_MODEL_ANTHROPIC = "claude-sonnet-4-20250514";
+const OPUS_MODEL_ANTHROPIC = "claude-opus-4-20250514";
 const DEFAULT_MODEL_OPENROUTER = "anthropic/claude-sonnet-4";
+const OPUS_MODEL_OPENROUTER = "anthropic/claude-opus-4";
 const DEFAULT_MAX_TOKENS = 4096;
 
 type Provider = "anthropic" | "openrouter";
@@ -154,8 +165,9 @@ async function callAnthropicDirect(
   request: LLMRequest,
   apiKey: string,
 ): Promise<LLMResponse> {
+  const model = request.useOpus ? OPUS_MODEL_ANTHROPIC : (request.model || DEFAULT_MODEL_ANTHROPIC);
   const body: Record<string, unknown> = {
-    model: request.model || DEFAULT_MODEL_ANTHROPIC,
+    model,
     max_tokens: request.max_tokens || DEFAULT_MAX_TOKENS,
     system: request.system,
     messages: request.messages,
@@ -163,13 +175,25 @@ async function callAnthropicDirect(
   if (request.temperature !== undefined) body.temperature = request.temperature;
   if (request.tools?.length) body.tools = request.tools;
 
+  // Extended thinking support
+  if (request.thinking) {
+    body.thinking = { type: "enabled", budget_tokens: request.thinkingBudget || 10000 };
+    body.temperature = 1; // Required by Anthropic for thinking
+    if ((body.max_tokens as number) < 16000) body.max_tokens = 16000;
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+  };
+  if (request.thinking) {
+    headers["anthropic-beta"] = "interleaved-thinking-2025-05-14";
+  }
+
   const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
+    headers,
     body: JSON.stringify(body),
   });
 
@@ -187,8 +211,9 @@ async function callAnthropicStreaming(
   apiKey: string,
   onEvent: StreamCallback,
 ): Promise<LLMResponse> {
+  const model = request.useOpus ? OPUS_MODEL_ANTHROPIC : (request.model || DEFAULT_MODEL_ANTHROPIC);
   const body: Record<string, unknown> = {
-    model: request.model || DEFAULT_MODEL_ANTHROPIC,
+    model,
     max_tokens: request.max_tokens || DEFAULT_MAX_TOKENS,
     system: request.system,
     messages: request.messages,
@@ -197,13 +222,25 @@ async function callAnthropicStreaming(
   if (request.temperature !== undefined) body.temperature = request.temperature;
   if (request.tools?.length) body.tools = request.tools;
 
+  // Extended thinking support
+  if (request.thinking) {
+    body.thinking = { type: "enabled", budget_tokens: request.thinkingBudget || 10000 };
+    body.temperature = 1;
+    if ((body.max_tokens as number) < 16000) body.max_tokens = 16000;
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": apiKey,
+    "anthropic-version": "2023-06-01",
+  };
+  if (request.thinking) {
+    headers["anthropic-beta"] = "interleaved-thinking-2025-05-14";
+  }
+
   const response = await fetch(ANTHROPIC_API_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
+    headers,
     body: JSON.stringify(body),
   });
 
@@ -225,6 +262,7 @@ async function parseAnthropicStream(
   const contentBlocks: ContentBlock[] = [];
   let currentTextBlock: TextBlock | null = null;
   let currentToolBlock: ToolUseBlock | null = null;
+  let currentThinkingBlock: ThinkingBlock | null = null;
   let toolInputJson = "";
   let stopReason: LLMResponse["stop_reason"] = "end_turn";
   let usage: LLMResponse["usage"] = { input_tokens: 0, output_tokens: 0 };
@@ -248,6 +286,8 @@ async function parseAnthropicStream(
           const block = event.content_block;
           if (block.type === "text") {
             currentTextBlock = { type: "text", text: "" };
+          } else if (block.type === "thinking") {
+            currentThinkingBlock = { type: "thinking", thinking: "" };
           } else if (block.type === "tool_use") {
             currentToolBlock = { type: "tool_use", id: block.id, name: block.name, input: {} };
             toolInputJson = "";
@@ -260,6 +300,9 @@ async function parseAnthropicStream(
           if (delta.type === "text_delta" && currentTextBlock) {
             currentTextBlock.text += delta.text;
             await onEvent({ type: "text_delta", text: delta.text });
+          } else if (delta.type === "thinking_delta" && currentThinkingBlock) {
+            currentThinkingBlock.thinking += delta.thinking;
+            await onEvent({ type: "thinking_delta", thinking: delta.thinking });
           } else if (delta.type === "input_json_delta" && currentToolBlock) {
             toolInputJson += delta.partial_json;
             await onEvent({ type: "tool_use_delta", tool_id: currentToolBlock.id });
@@ -268,6 +311,7 @@ async function parseAnthropicStream(
         }
         case "content_block_stop": {
           if (currentTextBlock) { contentBlocks.push(currentTextBlock); currentTextBlock = null; }
+          if (currentThinkingBlock) { contentBlocks.push(currentThinkingBlock); currentThinkingBlock = null; }
           if (currentToolBlock) {
             try { currentToolBlock.input = toolInputJson ? JSON.parse(toolInputJson) : {}; } catch { currentToolBlock.input = {}; }
             contentBlocks.push(currentToolBlock);
@@ -301,8 +345,9 @@ async function callOpenRouterDirect(
   apiKey: string,
 ): Promise<LLMResponse> {
   const messages = toOpenAIMessages(request.system, request.messages);
+  const model = request.useOpus ? OPUS_MODEL_OPENROUTER : (request.model || DEFAULT_MODEL_OPENROUTER);
   const body: Record<string, unknown> = {
-    model: request.model || DEFAULT_MODEL_OPENROUTER,
+    model,
     max_tokens: request.max_tokens || DEFAULT_MAX_TOKENS,
     messages,
   };
@@ -359,8 +404,9 @@ async function callOpenRouterStreaming(
   onEvent: StreamCallback,
 ): Promise<LLMResponse> {
   const messages = toOpenAIMessages(request.system, request.messages);
+  const model = request.useOpus ? OPUS_MODEL_OPENROUTER : (request.model || DEFAULT_MODEL_OPENROUTER);
   const body: Record<string, unknown> = {
-    model: request.model || DEFAULT_MODEL_OPENROUTER,
+    model,
     max_tokens: request.max_tokens || DEFAULT_MAX_TOKENS,
     messages,
     stream: true,
@@ -505,4 +551,14 @@ export function extractText(content: ContentBlock[]): string {
  */
 export function extractToolCalls(content: ContentBlock[]): ToolUseBlock[] {
   return content.filter((b): b is ToolUseBlock => b.type === "tool_use");
+}
+
+/**
+ * Extract thinking content from LLM response blocks.
+ */
+export function extractThinking(content: ContentBlock[]): string {
+  return content
+    .filter((b): b is ThinkingBlock => b.type === "thinking")
+    .map((b) => b.thinking)
+    .join("\n");
 }

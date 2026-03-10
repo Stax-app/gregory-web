@@ -48,6 +48,7 @@ function renderPlan(plan, parentEl) {
                                 ? `<div class="task-step-tools">${step.tools_needed.map(t => `<span class="step-tool-tag">${escapeHtml(t)}</span>`).join('')}</div>`
                                 : ''}
                             ${step.checkpoint ? '<span class="task-step-checkpoint">Checkpoint</span>' : ''}
+                            ${step.parallel_group ? '<span class="task-step-parallel">\u26A1 Parallel</span>' : ''}
                         </div>
                         <div class="task-step-status">
                             <span class="step-status-dot pending"></span>
@@ -409,9 +410,18 @@ async function callOrchestrate(taskId, action, feedback) {
                                 }
                                 break;
 
+                            case 'thinking':
+                                showThinkingIndicator(aiTextEl, parsed);
+                                break;
+
+                            case 'replan':
+                                showReplanNotification(aiTextEl, parsed);
+                                break;
+
                             default: {
                                 const delta = parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content;
                                 if (delta) {
+                                    removeThinkingIndicator(aiTextEl);
                                     fullText += delta;
                                     scheduleStreamRender(aiTextEl, fullText);
                                 }
