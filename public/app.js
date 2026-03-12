@@ -1243,9 +1243,12 @@ async function getAuthHeaders() {
             var session = await supabaseClient.auth.getSession();
             if (session.data.session) {
                 headers['Authorization'] = 'Bearer ' + session.data.session.access_token;
+                return headers;
             }
-        } catch (_e) { /* proceed without auth */ }
+        } catch (_e) { /* fall through to anon key */ }
     }
+    // Always send anon key so edge functions accept the request
+    headers['Authorization'] = 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNpdnBra2hvZnZwYWlmcHJocGlpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk4ODc2NDksImV4cCI6MjA2NTQ2MzY0OX0.Vu7gH2SZ41OCqH6i9lio3FESM6dL0k3hdIsb-0n_Xww';
     return headers;
 }
 

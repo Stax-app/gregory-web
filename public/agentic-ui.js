@@ -298,13 +298,7 @@ async function modifyTask(taskId, feedback) {
 
 async function abortTask(taskId) {
     try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (appState.user) {
-            const session = await supabaseClient.auth.getSession();
-            if (session.data.session) {
-                headers['Authorization'] = 'Bearer ' + session.data.session.access_token;
-            }
-        }
+        const headers = await getAuthHeaders();
         await fetch(ORCHESTRATE_URL, {
             method: 'POST',
             headers,
