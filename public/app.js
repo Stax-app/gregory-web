@@ -953,6 +953,9 @@ function handleSend() {
 function renderMarkdown(text) {
     let html = text;
 
+    // Ensure space after periods between sentences (e.g. "end.Next" → "end. Next")
+    html = html.replace(/\.([A-Z])/g, '. $1');
+
     // Transform confidence markers into styled badges
     html = html.replace(/\[HIGH\]/g, '<span class="confidence-high">HIGH</span>');
     html = html.replace(/\[MEDIUM\]/g, '<span class="confidence-medium">MEDIUM</span>');

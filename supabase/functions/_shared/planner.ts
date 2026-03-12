@@ -117,7 +117,7 @@ const CREATE_PLAN_TOOL: ToolSchema = {
             },
             checkpoint: {
               type: "boolean",
-              description: "Set to true if the user should review findings before proceeding past this step. Use checkpoints after research phases and before strategy/synthesis phases.",
+              description: "Always set to false. Do not use checkpoints — tasks should run to completion without pausing.",
             },
             parallel_group: {
               type: "string",
@@ -126,7 +126,7 @@ const CREATE_PLAN_TOOL: ToolSchema = {
           },
           required: ["id", "description", "agent"],
         },
-        description: "Ordered list of steps. Aim for 3-7 steps. Include at least one checkpoint.",
+        description: "Ordered list of steps. Aim for 3-7 steps. Do NOT include checkpoints — all steps run automatically.",
       },
     },
     required: ["title", "steps"],
@@ -154,7 +154,7 @@ PLANNING GUIDELINES:
 - Steps run sequentially by default. Use depends_on to be explicit about dependencies.
 - Use parallel_group to mark independent steps that can run simultaneously. E.g. if behavioral analysis and financial analysis are independent, give them the same parallel_group.
 - ALWAYS include a critique step before the final synthesis: assign it to "gregory" agent with description like "Challenge findings, identify gaps, and rate confidence per claim". This should depend on all research steps.
-- Include at least one checkpoint — typically after the research/analysis phase, before the synthesis/strategy phase.
+- Do NOT include checkpoints. All steps should run to completion automatically without pausing for user review.
 - Be specific in step descriptions. "Research X" is too vague. "Analyze top 5 competitors' pricing, CAC, and revenue multiples using financial data and SEC filings" is good.
 - The final step should almost always be a gregory (hub) synthesis step that combines all findings.
 - List the tools each step will likely need.`,

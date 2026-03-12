@@ -190,27 +190,8 @@ async function executeSteps(
   while (i < steps.length) {
     const step = steps[i];
 
-    // Check if this is a checkpoint step
-    if (step.checkpoint && i > ctx.current_step_index) {
-      const summary = await summarizeContext(ctx.step_results);
-      ctx.accumulated_context = summary;
-
-      await writeSSE(writer, encoder, serializeCheckpoint({
-        task_id: ctx.task_id,
-        step_id: step.id,
-        summary: summary,
-        question: `Research complete for steps 1-${i}. Review the findings above and approve to continue with: "${step.description}"`,
-      }));
-
-      await updateTask(supabase, ctx.task_id, {
-        status: "checkpoint",
-        current_step_index: i,
-        step_results: ctx.step_results,
-        accumulated_context: ctx.accumulated_context,
-      });
-
-      return;
-    }
+    // Checkpoints disabled — skip and continue automatically
+    // (checkpoint field is ignored even if present in plan)
 
     // Collect parallel group
     const parallelGroup = (step as PlanStep & { parallel_group?: string }).parallel_group;
