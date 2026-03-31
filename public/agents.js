@@ -99,6 +99,49 @@ const AGENTS = {
     },
 };
 
+const DASHBOARDS = {
+    competitive: {
+        key: 'competitive',
+        name: 'Competitive Intel',
+        icon: '\u{1F50D}',
+        tagline: 'Monitor competitors automatically',
+        accentColor: '#f97316',
+        route: 'dashboards/competitive',
+    },
+    brand: {
+        key: 'brand',
+        name: 'Brand Health',
+        icon: '\u{1F4C8}',
+        tagline: 'Real-time reputation tracking',
+        accentColor: '#06b6d4',
+        route: 'dashboards/brand',
+    },
+    leads: {
+        key: 'leads',
+        name: 'Lead Intelligence',
+        icon: '\u{1F465}',
+        tagline: 'Enrich & score accounts',
+        accentColor: '#8b5cf6',
+        route: 'dashboards/leads',
+    },
+    campaigns: {
+        key: 'campaigns',
+        name: 'Campaign Strategist',
+        icon: '\u{1F3AF}',
+        tagline: 'AI-powered GTM plans',
+        accentColor: '#ec4899',
+        route: 'dashboards/campaigns',
+    },
+    notifications: {
+        key: 'notifications',
+        name: 'Notifications',
+        icon: '\u{1F514}',
+        tagline: 'Alerts & channels',
+        accentColor: '#6366f1',
+        route: 'dashboards/notifications',
+    },
+};
+
 const GREGORY_HUB = {
     name: 'GREGORY',
     description: 'Your personal marketing intelligence assistant. I coordinate four specialist agents and can help with anything across behavioral psychology, financial analysis, regulatory compliance, and marketing strategy.',

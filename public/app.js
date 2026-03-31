@@ -79,6 +79,24 @@ function updateSidebarActiveState(agentKey) {
     document.querySelectorAll('.agent-nav-item').forEach(el => {
         el.classList.toggle('active', el.dataset.agent === agentKey);
     });
+    // Clear dashboard active states when an agent is selected
+    document.querySelectorAll('.dashboard-nav-item').forEach(el => {
+        el.classList.remove('active');
+    });
+}
+
+function renderDashboardNav() {
+    const container = document.getElementById('dashboardNavList');
+    if (!container || typeof DASHBOARDS === 'undefined') return;
+    container.innerHTML = Object.values(DASHBOARDS).map(d => `
+        <a href="#/${d.route}" class="capability-card dashboard-nav-item" data-dashboard="${d.key}">
+            <div class="capability-icon">${d.icon}</div>
+            <div class="capability-info">
+                <h4>${d.name}</h4>
+                <p>${d.tagline}</p>
+            </div>
+        </a>
+    `).join('');
 }
 
 // ---------- THEME ----------
@@ -787,7 +805,21 @@ function navigateTo(agentKey) {
 
 function handleRoute() {
     const hash = window.location.hash.replace('#/', '') || '';
-    navigateTo(hash || null);
+    if (hash.startsWith('dashboards/')) {
+        const dashboardKey = hash.replace('dashboards/', '');
+        if (typeof navigateToDashboard === 'function') {
+            navigateToDashboard(dashboardKey);
+        }
+    } else {
+        // Hide dashboard if visible
+        const dc = document.getElementById('dashboardContainer');
+        const cc = document.getElementById('chatContainer');
+        const ia = document.querySelector('.input-area');
+        if (dc) dc.style.display = 'none';
+        if (cc) cc.style.display = '';
+        if (ia) ia.style.display = '';
+        navigateTo(hash || null);
+    }
 }
 
 window.addEventListener('hashchange', handleRoute);
@@ -1530,6 +1562,7 @@ function showReplanNotification(parentEl, data) {
 // ---------- INIT ----------
 
 renderAgentNav();
+renderDashboardNav();
 
 (async () => {
     const { data: { session } } = await supabaseClient.auth.getSession();

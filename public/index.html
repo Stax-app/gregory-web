@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css?v=20260311" />
+  <link rel="stylesheet" href="dashboards.css?v=20260330" />
 </head>
 <body>
   <div class="app">
@@ -28,6 +29,11 @@
       <div class="agent-nav">
         <h3 class="section-label">Agents</h3>
         <div id="agentNavList"></div>
+      </div>
+
+      <div class="dashboard-nav">
+        <h3 class="section-label">Dashboards</h3>
+        <div id="dashboardNavList"></div>
       </div>
 
       <div class="sidebar-footer">
@@ -123,13 +129,24 @@
         </div>
         <span class="input-hint" id="inputHint">GREGORY uses peer-reviewed research & real-time data. All claims are sourced.</span>
       </div>
+    <!-- Dashboard Container (hidden by default, shown when dashboard route active) -->
+    <div class="dashboard-container" id="dashboardContainer" style="display:none;">
+      <div class="dashboard-header" id="dashboardHeader"></div>
+      <div class="dashboard-content" id="dashboardContent"></div>
+    </div>
     </main>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-  <script src="agents.js"></script>
-  <script src="app.js?v=20260311"></script>
+  <script src="agents.js?v=20260330"></script>
+  <script src="app.js?v=20260330"></script>
   <script src="agentic-ui.js?v=20260311"></script>
   <script src="document-upload.js?v=20260311"></script>
+  <script src="dashboards.js?v=20260330"></script>
+  <script src="dashboard-competitive.js?v=20260330"></script>
+  <script src="dashboard-brand.js?v=20260330"></script>
+  <script src="dashboard-leads.js?v=20260330"></script>
+  <script src="dashboard-campaigns.js?v=20260330"></script>
+  <script src="dashboard-notifications.js?v=20260330"></script>
 </body>
 </html>
